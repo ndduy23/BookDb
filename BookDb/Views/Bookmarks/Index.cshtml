@@ -1,0 +1,54 @@
+﻿@model IEnumerable<BookDb.Models.Bookmark>
+
+@{
+    ViewData["Title"] = "Danh sách Bookmark";
+}
+
+
+<h2>Danh sách Bookmark</h2>
+
+
+
+<form method="get" asp-action="Index">
+    <input type="text" name="q" placeholder="Tìm theo tên tài liệu..." value="@Context.Request.Query["q"]" />
+    <button type="submit" class="btn btn-sm btn-info">Tìm</button>
+</form>
+
+
+
+<table class="table table-bordered table-striped mt-3">
+    <thead>
+        <tr>
+            <th>Tài liệu</th>
+            <th>Trang</th>
+            <th>Ghi chú</th>
+            <th>Ngày tạo</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.DocumentPage?.Document?.Title</td>
+            <td>@item.DocumentPage?.PageNumber</td>
+            <td>@item.Title</td>
+            <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+            <td>
+                <!-- Xem -->
+                <a asp-controller="Documents" asp-action="ViewDocument"
+                   asp-route-id="@item.DocumentPage?.DocumentId"
+                   asp-route-mode="paged"
+                   asp-route-page="@item.DocumentPage?.PageNumber"
+                   class="btn btn-sm btn-success">Xem</a>
+
+                <!-- Xóa -->
+                <form asp-controller="Bookmarks" asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Xóa bookmark này?')">Xóa</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

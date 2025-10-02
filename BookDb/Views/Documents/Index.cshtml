@@ -1,0 +1,49 @@
+﻿
+
+@model IEnumerable<BookDb.Models.Document>
+
+@{
+    ViewData["Title"] = "Danh sách tài liệu";
+}
+
+<h2>Danh sách tài liệu</h2>
+
+<p>
+    <a asp-action="Create" class="btn btn-primary">+ Thêm tài liệu mới</a>
+</p>
+
+<form method="get" asp-action="Index">
+    <input type="text" name="q" placeholder="Tìm kiếm..." value="@Context.Request.Query["q"]" />
+    <button type="submit" class="btn btn-sm btn-info">Tìm</button>
+</form>
+
+<table class="table table-bordered table-striped mt-3">
+    <thead>
+        <tr>
+            <th>Tiêu đề</th>
+            <th>Lĩnh vực</th>
+            <th>Tác giả</th>
+            <th>Ngày tạo</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    @foreach (var item in Model)
+    {
+        <tr>
+            <td>@item.Title</td>
+            <td>@item.Category</td>
+            <td>@item.Author</td>
+            <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
+            <td>
+                <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
+                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
+                <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline">
+                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Xóa tài liệu này?')">Xóa</button>
+                </form>
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>
+

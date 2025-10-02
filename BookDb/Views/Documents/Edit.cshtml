@@ -1,0 +1,32 @@
+﻿@model BookDb.Models.Document
+
+<h2>Sửa tài liệu</h2>
+
+<form asp-action="Edit" asp-route-id="@Model.Id" enctype="multipart/form-data" method="post">
+    <div class="mb-3">
+        <label class="form-label">Tiêu đề</label>
+        <input name="title" value="@Model.Title" class="form-control" required />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Lĩnh vực</label>
+        <input name="category" value="@Model.Category" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">Tác giả</label>
+        <input name="author" value="@Model.Author" class="form-control" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label">File mới (nếu muốn thay thế)</label>
+        <input type="file" name="file" class="form-control" />
+        @if (!string.IsNullOrEmpty(Model.FilePath))
+        {
+            <p>File hiện tại: <a href="@Model.FilePath" target="_blank">📄 Xem file</a></p>
+        }
+    </div>
+
+    <button type="submit" class="btn btn-primary">Cập nhật</button>
+    <a asp-action="Index" class="btn btn-secondary">Hủy</a>
+</form>

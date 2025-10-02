@@ -48,12 +48,17 @@ namespace BookDb.Controllers
                 .FirstOrDefaultAsync(p => p.Id == documentPageId);
 
             if (page == null)
-                return NotFound();
+            {
+                return Redirect(Request.Headers["Referer"].ToString());
+            }
+
 
             // Kiểm tra bookmark đã tồn tại chưa
             bool exists = await _db.Bookmarks.AnyAsync(b => b.DocumentPageId == documentPageId);
             if (exists)
-                return Conflict(); // HTTP 409 - đã tồn tại
+            {
+                return Redirect(Request.Headers["Referer"].ToString());
+            }
 
             var bookmark = new Bookmark
             {
@@ -67,7 +72,7 @@ namespace BookDb.Controllers
             _db.Bookmarks.Add(bookmark);
             await _db.SaveChangesAsync();
 
-            return Ok("Bookmark đã lưu thành công.");
+            return Redirect(Request.Headers["Referer"].ToString());
         }
 
         // POST /bookmarks/delete/{id}

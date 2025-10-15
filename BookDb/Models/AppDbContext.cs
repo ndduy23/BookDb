@@ -5,9 +5,10 @@ namespace BookDb.Models
 {
     public class AppDbContext : DbContext
     {
-        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
-        {
-        }
+        public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+        public DbSet<Document> Documents { get; set; }
+        public DbSet<DocumentPage> DocumentPages { get; set; }
+        public DbSet<Bookmark> Bookmarks { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder builder)
         {
@@ -31,8 +32,6 @@ namespace BookDb.Models
                 .OnDelete(DeleteBehavior.Cascade);
         }
 
-        public DbSet<Document> Documents { get; set; }
-        public DbSet<DocumentPage> DocumentPages { get; set; }
-        public DbSet<Bookmark> Bookmarks { get; set; }
+
     }
 }

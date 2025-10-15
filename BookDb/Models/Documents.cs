@@ -11,23 +11,23 @@ namespace BookDb.Models
         public int Id { get; set; }
 
         [Required, MaxLength(500)]
-        public string Title { get; set; }              // Tên/Tựa đề
+        public string Title { get; set; }         
 
         [MaxLength(200)]
-        public string Category { get; set; }           // Lĩnh vực
+        public string Category { get; set; }      
 
         [MaxLength(200)]
-        public string Author { get; set; }             // Người viết/Tác giả
+        public string Author { get; set; }         
 
         [Required, MaxLength(500)]
-        public string FileName { get; set; }           // tên file thực tế (lưu trên disk/blob)
+        public string FileName { get; set; }       
 
-        public long FileSize { get; set; }             // kích thước byte
+        public long FileSize { get; set; }          
 
         public string? FilePath { get; set; }   
 
         [MaxLength(100)]
-        public string? ContentType { get; set; }        // application/pdf, image/*
+        public string? ContentType { get; set; }   
 
         public string? Description { get; set; }
 

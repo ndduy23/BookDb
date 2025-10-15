@@ -15,9 +15,9 @@ namespace BookDb.Models
         public DocumentPage DocumentPage { get; set; }
 
         [Required]
-        public string Url { get; set; }  // Lưu URL trực tiếp
+        public string Url { get; set; } 
 
-        public string? Title { get; set; } // Tên tài liệu hoặc trang
+        public string? Title { get; set; } 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
 

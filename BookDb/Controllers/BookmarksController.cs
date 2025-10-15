@@ -1,78 +1,49 @@
 ﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using BookDb.Models;
+using BookDb.Services.Interfaces;
 
 namespace BookDb.Controllers
 {
     [Route("bookmarks")]
     public class BookmarksController : Controller
     {
-        private readonly AppDbContext _db;
+        private readonly IBookmarkService _bookmarkService;
 
-        public BookmarksController(AppDbContext db)
+        public BookmarksController(IBookmarkService bookmarkService)
         {
-            _db = db;
+            _bookmarkService = bookmarkService;
         }
 
         // GET /bookmarks
         [HttpGet("")]
         public async Task<IActionResult> Index(string? q)
         {
-            var query = _db.Bookmarks
-                .Include(b => b.DocumentPage)
-                    .ThenInclude(dp => dp.Document) // lấy cả Document để có Title
-                .AsQueryable();
-
-            if (!string.IsNullOrEmpty(q))
-            {
-                query = query.Where(b =>
-                    b.Title.Contains(q) ||
-                    b.DocumentPage.Document.Title.Contains(q));
-            }
-
-            var bookmarks = await query
-                .OrderByDescending(b => b.CreatedAt)
-                .ToListAsync();
-
+            var bookmarks = await _bookmarkService.GetBookmarksAsync(q);
             return View(bookmarks);
         }
-
 
         // POST /bookmarks/create
         [HttpPost("create")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Create(int documentPageId, string? title)
         {
-            var page = await _db.DocumentPages
-                .Include(p => p.Document)
-                .FirstOrDefaultAsync(p => p.Id == documentPageId);
-
+            var page = await _bookmarkService.GetDocumentPageForBookmarkCreation(documentPageId); 
             if (page == null)
             {
-                return Redirect(Request.Headers["Referer"].ToString());
+                TempData["ErrorMessage"] = "Trang không tồn tại.";
+                return Redirect(Request.Headers["Referer"].ToString() ?? "/");
             }
 
+            var url = Url.Action("ViewDocument", "Documents",
+                new { id = page.DocumentId, page = page.PageNumber, mode = "paged" })!;
 
-            // Kiểm tra bookmark đã tồn tại chưa
-            bool exists = await _db.Bookmarks.AnyAsync(b => b.DocumentPageId == documentPageId);
-            if (exists)
+            var result = await _bookmarkService.CreateBookmarkAsync(documentPageId, title, url);
+
+            if (!result.Success)
             {
-                return Redirect(Request.Headers["Referer"].ToString());
+                TempData["ErrorMessage"] = result.ErrorMessage;
             }
 
-            var bookmark = new Bookmark
-            {
-                DocumentPageId = documentPageId,
-                Url = Url.Action("ViewDocument", "Documents",
-                    new { id = page.DocumentId, page = page.PageNumber, mode = "paged" })!,
-                Title = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            _db.Bookmarks.Add(bookmark);
-            await _db.SaveChangesAsync();
-
-            return Redirect(Request.Headers["Referer"].ToString());
+            return Redirect(Request.Headers["Referer"].ToString() ?? "/");
         }
 
         // POST /bookmarks/delete/{id}
@@ -80,11 +51,8 @@ namespace BookDb.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Delete(int id)
         {
-            var bookmark = await _db.Bookmarks.FindAsync(id);
-            if (bookmark == null) return NotFound();
-
-            _db.Bookmarks.Remove(bookmark);
-            await _db.SaveChangesAsync();
+            var success = await _bookmarkService.DeleteBookmarkAsync(id);
+            if (!success) return NotFound();
 
             return RedirectToAction("Index");
         }
@@ -93,8 +61,11 @@ namespace BookDb.Controllers
         [HttpGet("go/{id}")]
         public async Task<IActionResult> Go(int id)
         {
-            var bookmark = await _db.Bookmarks.FindAsync(id);
-            if (bookmark == null) return NotFound();
+            var bookmark = await _bookmarkService.GetBookmarkByIdAsync(id);
+            if (bookmark == null || string.IsNullOrEmpty(bookmark.Url))
+            {
+                return NotFound();
+            }
 
             return Redirect(bookmark.Url);
         }

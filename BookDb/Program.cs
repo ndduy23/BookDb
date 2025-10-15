@@ -2,104 +2,81 @@
 using BookDb.Models;
 using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.EntityFrameworkCore;
-using System;
+using BookDb.Repository.Interfaces;
+using BookDb.Services.Implementations;
+using BookDb.Services.Interfaces;
+using BookDb.Repositories.Interfaces;
+using BookDb.Repositories.Implementations;
 
-namespace BookDb
+
+var builder = WebApplication.CreateBuilder(args);
+
+// ====== Cấu hình dịch vụ (DI) ======
+builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    public class Program
-    {
-        public static void Main(string[] args)
-        {
+    string connectString = builder.Configuration.GetConnectionString("DefaultConnection");
+    options.UseSqlServer(connectString);
+});
 
+builder.Services.AddSingleton<FileStorageService>();
 
-            CreateHostBuilder(args).Build().Run();
-        }
+builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
+builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
+builder.Services.AddScoped<IBookmarkRepository, BookmarkRepository>();
+builder.Services.AddScoped<IDocumentPageRepository, DocumentPageRepository>();
 
-
-        public static IHostBuilder CreateHostBuilder(string[] args) =>
-                    Host.CreateDefaultBuilder(args)
-                        .ConfigureWebHostDefaults(webBuilder =>
-                        {
-                            webBuilder.UseStartup<Startup>();
-                        });
-
-        public class Startup
-        {
-            public static string ContentRootPath { get; set; }
-            public IConfiguration Configuration { get; }
-            public Startup(IConfiguration configuration, IWebHostEnvironment env)
-            {
-                Configuration = configuration;
-                ContentRootPath = env.ContentRootPath;
-            }
-
-            public void ConfigureServices(IServiceCollection services)
-            {
-                services.AddDbContext<AppDbContext>(option =>
-                {
-                    string connectString = Configuration.GetConnectionString("DefaultConnection");
-                    option.UseSqlServer(connectString);
-                });
-
-
-                services.AddSingleton<FileStorageService>();
-
-                services.AddControllersWithViews();
-                services.AddRazorPages();
-
-                services.Configure<RazorViewEngineOptions>(options =>
-                {
-                    options.ViewLocationFormats.Add("/MyViews/{1}/{0}" + RazorViewEngine.ViewExtension);
-                });
-
-                //services.Addsingleton<IHttpContextAccessor, HttpContextAccessor>();
-            }
-            public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
-            {
-                if (env.IsDevelopment())
-                {
-                    app.UseDeveloperExceptionPage();
-                }
-                else
-                {
-                    app.UseExceptionHandler("/home/Error");
-                    app.UseHsts();
-                }
-                app.UseHttpsRedirection();
-                app.UseStaticFiles();
-
-
-                app.AddStatusCodePage(); //tùy biến lỗi thừ 400 - 599
-
-                app.UseRouting();
-
-                app.UseAuthentication();
-                app.UseAuthorization();
+// Đăng ký các Services
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IBookmarkService, BookmarkService>();
+builder.Services.AddScoped<IDocumentPageService, DocumentPageService>();
 
 
 
-                app.UseEndpoints(endpoints =>
-                {
-                    endpoints.MapControllers();
+builder.Services.AddControllersWithViews();
+builder.Services.AddRazorPages();
+
+// Cấu hình Razor View Engine
+builder.Services.Configure<RazorViewEngineOptions>(options =>
+{
+    options.ViewLocationFormats.Add("/MyViews/{1}/{0}" + RazorViewEngine.ViewExtension);
+});
 
 
-                    app.UseEndpoints(endpoints =>
-                    {
-                        endpoints.MapControllerRoute(
-                          name: "areas",
-                          pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}"
-                        );
-                    });
+// ====== Build app ======
+var app = builder.Build();
 
-                    endpoints.MapControllerRoute(
-                        name: "default",
-                        pattern: "{controller=Home}/{action=Index}/{id?}");
-
-                    endpoints.MapRazorPages();
-                });
-            }
-        }
-
-
-    }
+// ====== Middleware pipeline ======
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
 }
+else
+{
+    app.UseExceptionHandler("/home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+// Tùy biến lỗi từ 400–599 (có thể là extension AddStatusCodePage bạn định nghĩa)
+app.AddStatusCodePage();
+
+app.UseRouting();
+
+app.UseAuthentication();
+app.UseAuthorization();
+
+// ====== Định tuyến ======
+app.MapControllerRoute(
+    name: "areas",
+    pattern: "{area:exists}/{controller=Home}/{action=Index}/{id?}");
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.MapRazorPages();
+
+// ====== Chạy app ======
+app.Run();

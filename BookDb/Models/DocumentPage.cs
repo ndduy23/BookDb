@@ -14,13 +14,10 @@ namespace BookDb.Models
 
         public int PageNumber { get; set; }
 
-        // Nội dung text (tùy chọn)
         public string? TextContent { get; set; }
 
-        // File vật lý chứa nội dung (ảnh/pdf) – mỗi trang một file
         public string? FilePath { get; set; }
 
-        // Loại nội dung (image/png, application/pdf…)
         [MaxLength(100)]
         public string? ContentType { get; set; }
         public Bookmark? Bookmark { get; set; }

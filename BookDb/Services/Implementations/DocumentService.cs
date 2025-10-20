@@ -2,7 +2,13 @@
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
+using ClosedXML.Excel;
 using iText.Kernel.Pdf;
+using System.Net;
+using System.Text;
+using System.Linq;
+using Microsoft.AspNetCore.SignalR;
+using BookDb.Hubs;
 
 namespace BookDb.Services.Implementations
 {
@@ -12,15 +18,17 @@ namespace BookDb.Services.Implementations
         private readonly IDocumentPageRepository _pageRepo;
         private readonly IBookmarkRepository _bookmarkRepo;
         private readonly IWebHostEnvironment _env;
-        private readonly AppDbContext _context; 
+        private readonly AppDbContext _context;
+        private readonly IHubContext<NotificationHub>? _hubContext;
 
-        public DocumentService(IDocumentRepository docRepo, IDocumentPageRepository pageRepo, IBookmarkRepository bookmarkRepo, IWebHostEnvironment env, AppDbContext context)
+        public DocumentService(IDocumentRepository docRepo, IDocumentPageRepository pageRepo, IBookmarkRepository bookmarkRepo, IWebHostEnvironment env, AppDbContext context, IHubContext<NotificationHub>? hubContext = null)
         {
             _docRepo = docRepo;
             _pageRepo = pageRepo;
             _bookmarkRepo = bookmarkRepo;
             _env = env;
             _context = context;
+            _hubContext = hubContext;
         }
 
         public Task<List<Document>> GetDocumentsAsync(string? q, int page, int pageSize)
@@ -38,7 +46,7 @@ namespace BookDb.Services.Implementations
             if (file == null || file.Length == 0)
                 throw new ArgumentException("File not selected.");
 
-            var allowed = new[] { ".pdf", ".docx", ".txt" };
+            var allowed = new[] { ".pdf", ".docx", ".txt", ".xlsx" };
             var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
             if (!allowed.Contains(ext))
                 throw new ArgumentException("Format not supported.");
@@ -70,7 +78,7 @@ namespace BookDb.Services.Implementations
             };
 
             await _docRepo.AddAsync(doc);
-            await _context.SaveChangesAsync(); 
+            await _context.SaveChangesAsync();
 
             if (ext == ".pdf")
             {
@@ -78,9 +86,38 @@ namespace BookDb.Services.Implementations
                 if (!Directory.Exists(pageDir))
                     Directory.CreateDirectory(pageDir);
 
-                await SplitPdfAndSavePages(savePath, pageDir, doc.Id);
-                await _context.SaveChangesAsync(); 
+                await SplitPdf(savePath, pageDir, doc.Id);
+                await _context.SaveChangesAsync();
             }
+            else if (ext == ".xlsx")
+            {
+                string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
+                if (!Directory.Exists(pageDir))
+                    Directory.CreateDirectory(pageDir);
+
+                await SplitExcel(savePath, pageDir, doc.Id);
+                await _context.SaveChangesAsync();
+            }
+            else if (ext == ".txt")
+            {
+                string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
+                if (!Directory.Exists(pageDir))
+                    Directory.CreateDirectory(pageDir);
+
+                await SplitText(savePath, pageDir, doc.Id);
+                await _context.SaveChangesAsync();
+            }
+
+            // Notify connected clients about new document
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveNotification", $"New document uploaded: {doc.Title}");
+            }
+            catch
+            {
+                // swallow exceptions from hub notifications to avoid breaking upload flow
+            }
+
         }
 
         public async Task<bool> DeleteDocumentAsync(int id)
@@ -97,6 +134,15 @@ namespace BookDb.Services.Implementations
 
             _docRepo.Delete(doc);
             await _context.SaveChangesAsync();
+
+            try
+            {
+                await _hubContext.Clients.All.SendAsync("ReceiveNotification", $"Document deleted: {doc.Title}");
+            }
+            catch
+            {
+            }
+
             return true;
         }
 
@@ -144,7 +190,7 @@ namespace BookDb.Services.Implementations
 
         public Task<List<Bookmark>> GetBookmarksAsync() => _bookmarkRepo.GetAllWithDetailsAsync();
 
-        private async Task SplitPdfAndSavePages(string sourcePath, string outputDir, int documentId)
+        private async Task SplitPdf(string sourcePath, string outputDir, int documentId)
         {
             using var reader = new PdfReader(sourcePath);
             using var pdf = new PdfDocument(reader);
@@ -169,5 +215,103 @@ namespace BookDb.Services.Implementations
                 await _pageRepo.AddAsync(page);
             }
         }
+        private async Task SplitExcel(string sourcePath, string outputDir, int documentId)
+        {
+            using var workbook = new XLWorkbook(sourcePath);
+
+            foreach (var sheet in workbook.Worksheets)
+            {
+                // Create an HTML file per sheet so it can be displayed in an iframe
+                string safeName = string.Join("_", sheet.Name.Split(Path.GetInvalidFileNameChars()));
+                string outputFile = Path.Combine(outputDir, $"{safeName}.html");
+                using (var writer = new StreamWriter(outputFile, false, Encoding.UTF8))
+                {
+                    await writer.WriteLineAsync("<!doctype html>");
+                    await writer.WriteLineAsync("<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + WebUtility.HtmlEncode(sheet.Name) + "</title>");
+                    await writer.WriteLineAsync("<style>table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px}</style>");
+                    await writer.WriteLineAsync("</head><body>");
+                    await writer.WriteLineAsync("<h3>Sheet: " + WebUtility.HtmlEncode(sheet.Name) + "</h3>");
+
+                    var range = sheet.RangeUsed();
+                    await writer.WriteLineAsync("<table>");
+                    if (range != null)
+                    {
+                        for (int row = 1; row <= range.RowCount(); row++)
+                        {
+                            await writer.WriteLineAsync("<tr>");
+                            for (int col = 1; col <= range.ColumnCount(); col++)
+                            {
+                                var cellValue = sheet.Cell(row, col).GetValue<string>();
+                                var encoded = WebUtility.HtmlEncode(cellValue);
+                                if (row == 1)
+                                    await writer.WriteLineAsync($"<th>{encoded}</th>");
+                                else
+                                    await writer.WriteLineAsync($"<td>{encoded}</td>");
+                            }
+                            await writer.WriteLineAsync("</tr>");
+                        }
+                    }
+                    else
+                    {
+                        await writer.WriteLineAsync("<tr><td>(Empty sheet)</td></tr>");
+                    }
+                    await writer.WriteLineAsync("</table>");
+                    await writer.WriteLineAsync("</body></html>");
+                }
+
+                var page = new DocumentPage
+                {
+                    DocumentId = documentId,
+                    PageNumber = sheet.Position,
+                    FilePath = outputFile.Replace(_env.WebRootPath, "").Replace("\\", "/"),
+                    TextContent = $"Sheet: {sheet.Name}",
+                    ContentType = "text/html"
+                };
+
+                await _pageRepo.AddAsync(page);
+            }
+        }
+
+        private async Task SplitText(string sourcePath, string outputDir, int documentId)
+        {
+            // Read entire text
+            string content = await File.ReadAllTextAsync(sourcePath, Encoding.UTF8);
+            if (string.IsNullOrWhiteSpace(content))
+                return;
+
+            // Split into words and create pages of 700 words
+            var words = content.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+            const int wordsPerPage = 700;
+            int totalPages = (int)Math.Ceiling((double)words.Length / wordsPerPage);
+
+            for (int p = 0; p < totalPages; p++)
+            {
+                var pageWords = words.Skip(p * wordsPerPage).Take(wordsPerPage);
+                var pageText = string.Join(" ", pageWords);
+
+                // Create simple HTML file for this page
+                string outputFile = Path.Combine(outputDir, $"page_{p + 1}.html");
+                using (var writer = new StreamWriter(outputFile, false, Encoding.UTF8))
+                {
+                    await writer.WriteLineAsync("<!doctype html>");
+                    await writer.WriteLineAsync("<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:Arial,Helvetica,sans-serif;padding:12px;white-space:pre-wrap}</style></head><body>");
+                    await writer.WriteLineAsync(WebUtility.HtmlEncode(pageText));
+                    await writer.WriteLineAsync("</body></html>");
+                }
+
+                var page = new DocumentPage
+                {
+                    DocumentId = documentId,
+                    PageNumber = p + 1,
+                    FilePath = outputFile.Replace(_env.WebRootPath, "").Replace("\\", "/"),
+                    TextContent = pageText.Length > 700 ? pageText.Substring(0, 700) + "..." : pageText,
+                    ContentType = "text/html"
+                };
+
+                await _pageRepo.AddAsync(page);
+            }
+        }
+
+
     }
 }

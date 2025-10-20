@@ -17,7 +17,7 @@
 </p>
 
 <!-- Nút chuyển đổi giữa bản gốc và bản phân trang -->
-<div class="mb-3">
+<div class="mb-3 d-flex align-items-center">
     @if (mode == "paged")
     {
         <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="original" class="btn btn-info">
@@ -30,9 +30,31 @@
             Xem bản phân trang
         </a>
     }
+
+    @* Page controls placed next to the mode switch *@
+    @if (mode == "paged" && Model.Pages != null && Model.Pages.Any() && totalPages > 0)
+    {
+        var topPageInfo = $"Trang {page} / {totalPages}";
+        <div class="ms-3">
+            <div class="btn-group" role="group" aria-label="Trang">
+                @if (page > 1)
+                {
+                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page - 1)" class="btn btn-secondary">←</a>
+                }
+
+                <a class="btn btn-light disabled">@topPageInfo</a>
+
+                @if (page < totalPages)
+                {
+                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page + 1)" class="btn btn-secondary">→</a>
+                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(totalPages)" class="btn btn-secondary">Trang cuối »</a>
+                }
+            </div>
+        </div>
+    }
 </div>
 
-<!-- Hiển thị PDF -->
+<!-- Hiển thị PDF và HTML (Excel) -->
 @if (mode == "paged")
 {
     if (Model.Pages != null && Model.Pages.Any())
@@ -43,34 +65,38 @@
 
         if (currentPageDoc != null)
         {
-            <iframe src="@Url.Content(currentPageDoc.FilePath)" 
-                    width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
+            var iframeSrc = Url.Content(currentPageDoc.FilePath ?? "");
+            bool hasBookmark = currentPageDoc.Bookmark != null;
 
+            // If the generated page is HTML (from Excel), show it directly. Otherwise (PDF) show inside an iframe as well.
+            if (!string.IsNullOrEmpty(currentPageDoc.ContentType) && currentPageDoc.ContentType.Contains("text/html"))
+            {
+                <iframe id="docFrame" src="@iframeSrc" width="80%" height="1000px" style="border:1px solid #ccc"></iframe>
+            }
+            else
+            {
+                <iframe id="docFrame" src="@iframeSrc" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
+            }
 
-            <form asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline"
-                  onsubmit="return showBookmarkMessage();">
-                <input type="hidden" name="documentPageId" value="@currentPage.Id" />
-                <button type="submit" class="btn btn-primary">Thêm Bookmark</button>
-            </form>
+            <!-- Hiển thị thông tin trang hiện tại / tổng trang -->
+            @if (totalPages > 0)
+            {
+                var pageInfo = $"Trang {page} / {totalPages}";
+                <div class="mt-2">@pageInfo</div>
+            }
 
+            @if (hasBookmark)
+            {
+                <button type="button" class="btn btn-warning" onclick="alert('Bookmark đã tồn tại trên trang này');">Đã có Bookmark</button>
+            }
+            else
+            {
+                <form asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline" onsubmit="return showBookmarkMessage();">
+                    <input type="hidden" name="documentPageId" value="@(currentPageDoc.Id)" />
+                    <button type="submit" class="btn btn-primary">Thêm Bookmark</button>
+                </form>
+            }
 
-
-
-            <!-- Nút chuyển trang -->
-            <div class="mt-2">
-                @if (page > 1)
-                {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page - 1)" class="btn btn-secondary">
-                        ← Trang trước
-                    </a>
-                }
-                @if (page < totalPages)
-                {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page + 1)" class="btn btn-secondary">
-                        Trang sau →
-                    </a>
-                }
-            </div>
         }
         else
         {
@@ -86,13 +112,45 @@ else
 {
     if (!string.IsNullOrEmpty(Model.FilePath))
     {
-        <iframe src="@Url.Content(Model.FilePath)" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
+        <iframe id="docFrame" src="@Url.Content(Model.FilePath)" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
     }
     else
     {
         <p class="text-danger">Không tìm thấy file gốc.</p>
     }
 }
+
+<script src="/lib/microsoft/signalr/dist/browser/signalr.js"></script>
+<script src="/js/document-notify.js"></script>
+<script>
+    (function () {
+        var docId = @Model.Id;
+        var currentPageId = @((currentPage != null) ? currentPage.Id : 0);
+
+        function onPageChanged(payload) {
+            try {
+                // If the changed page is the same as currently displayed, reload the iframe
+                if (payload && payload.PageId && payload.PageId === currentPageId) {
+                    var frame = document.getElementById('docFrame');
+                    if (frame) {
+                        // Reload iframe to fetch latest content
+                        frame.src = frame.src;
+                        // Optionally show a brief notification
+                        console.info('Page updated externally, reloaded.');
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        startDocumentNotify(docId, onPageChanged);
+        // Leave group when navigating away
+        window.addEventListener('beforeunload', function () {
+            stopDocumentNotify(docId);
+        });
+    })();
+</script>
 
 <script>
     function showBookmarkMessage() {

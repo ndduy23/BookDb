@@ -7,6 +7,7 @@ using BookDb.Services.Implementations;
 using BookDb.Services.Interfaces;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repositories.Implementations;
+using BookDb.Hubs;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,6 +35,9 @@ builder.Services.AddScoped<IDocumentPageService, DocumentPageService>();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
+
+// Add SignalR
+builder.Services.AddSignalR();
 
 // Cấu hình Razor View Engine
 builder.Services.Configure<RazorViewEngineOptions>(options =>
@@ -77,6 +81,9 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 
 app.MapRazorPages();
+
+// Map SignalR hub
+app.MapHub<NotificationHub>("/notify");
 
 // ====== Chạy app ======
 app.Run();

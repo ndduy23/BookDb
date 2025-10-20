@@ -1,4 +1,5 @@
 ﻿using BookDb.Models;
+using BookDb.Services.Implementations;
 using BookDb.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 
@@ -47,13 +48,42 @@ public class DocumentsController : Controller
         var document = await _docService.GetDocumentForViewingAsync(id);
         if (document == null) return NotFound();
 
+        // If the uploaded file is an Excel spreadsheet and we have generated HTML pages,
+        // prefer the paged view so the user can actually see the content in the browser.
+        if (!string.Equals(mode, "paged", StringComparison.OrdinalIgnoreCase) &&
+            (string.Equals(document.ContentType, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", StringComparison.OrdinalIgnoreCase)
+             || (!string.IsNullOrEmpty(document.FileName) && Path.GetExtension(document.FileName).Equals(".xlsx", StringComparison.OrdinalIgnoreCase)))
+        )
+        {
+            if (document.Pages != null && document.Pages.Any())
+            {
+                mode = "paged";
+            }
+        }
+
         ViewBag.Mode = mode;
         if (mode == "paged" && document.Pages.Any())
         {
+            // Ensure page is within valid range
+            var total = document.Pages.Count;
+            if (page < 1) page = 1;
+            if (page > total) page = total;
+
             var currentPage = document.Pages.OrderBy(p => p.PageNumber).Skip(page - 1).FirstOrDefault();
+
+            // Reload the page entity via service to include related data (e.g., Bookmark)
+            if (currentPage != null)
+            {
+                var fullPage = await _docService.GetDocumentPageByIdAsync(currentPage.Id);
+                ViewBag.Page = fullPage;
+            }
+            else
+            {
+                ViewBag.Page = null;
+            }
+
             ViewBag.CurrentPage = page;
-            ViewBag.TotalPages = document.Pages.Count;
-            ViewBag.Page = currentPage;
+            ViewBag.TotalPages = total;
         }
 
         return View(document);
@@ -100,4 +130,5 @@ public class DocumentsController : Controller
         var bookmarks = await _docService.GetBookmarksAsync();
         return View(bookmarks);
     }
+
 }

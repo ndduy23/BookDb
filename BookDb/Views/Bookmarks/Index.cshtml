@@ -1,10 +1,18 @@
-﻿@model IEnumerable<BookDb.Models.Bookmark>
+@model IEnumerable<BookDb.Models.Bookmark>
 
 @{
     ViewData["Title"] = "Danh sách Bookmark";
 }
 
-<h2>Danh sách Bookmark</h2>
+<link rel="stylesheet" href="~/css/bookmark-signalr.css" />
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Danh sách Bookmark</h2>
+    <div class="signalr-status-inline">
+        <span class="realtime-indicator" id="realtimeIndicator"></span>
+        <small class="text-muted">Real-time</small>
+    </div>
+</div>
 
 <div class="row mb-3">
     <div class="col-md-8">
@@ -12,6 +20,9 @@
             <span id="refreshSpinner" class="spinner-border spinner-border-sm d-none"></span>
             Làm mới
         </button>
+        <a href="@Url.Action("TestSignalR", "Bookmarks")" class="btn btn-outline-secondary">
+            🔧 Test SignalR
+        </a>
     </div>
     <div class="col-md-4">
         <form method="get" asp-action="Index" id="searchForm">
@@ -34,7 +45,7 @@
     }
     else
     {
-        <table class="table table-bordered table-striped">
+        <table class="table table-bordered table-striped bookmark-table">
             <thead>
                 <tr>
                     <th>Tài liệu</th>
@@ -91,6 +102,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/bookmark-signalr.js"></script>
     <script>
         $(document).ready(function () {
             // Ajax search with debounce
@@ -189,22 +201,90 @@
             });
 
             // Listen for bookmark changes via SignalR
-            if (window.signalR) {
-                const connection = new signalR.HubConnectionBuilder()
-                    .withUrl('/notify')
-                    .build();
+            if (window.signalR && window.NotificationHub && window.NotificationHub.connection) {
+                const connection = window.NotificationHub.connection;
 
-                connection.on('ReceiveNotification', function (message) {
-                    // If notification is about bookmarks, refresh the list
-                    if (message.toLowerCase().includes('bookmark')) {
-                        setTimeout(function () {
-                            const query = $('#searchQuery').val();
-                            loadBookmarks(query);
-                        }, 1000);
+                // Listen for bookmark created
+                connection.on('BookmarkCreated', function (data) {
+                    console.log('Bookmark created:', data);
+                    window.NotificationHub.showLocal(
+                        `🔖 Bookmark mới: ${data.Title}`,
+                        'success'
+                    );
+                    
+                    // Refresh the bookmark list
+                    setTimeout(function () {
+                        const query = $('#searchQuery').val();
+                        loadBookmarks(query);
+                    }, 500);
+                });
+
+                // Listen for bookmark deleted
+                connection.on('BookmarkDeleted', function (data) {
+                    console.log('Bookmark deleted:', data);
+                    
+                    // Remove the row with animation
+                    const $row = $(`tr[data-bookmark-id="${data.BookmarkId}"]`);
+                    if ($row.length > 0) {
+                        $row.addClass('bookmark-deleted');
+                        $row.css('background-color', '#f8d7da');
+                        setTimeout(function() {
+                            $row.fadeOut(500, function () {
+                                $(this).remove();
+                                
+                                // Check if list is empty
+                                if ($('#bookmarksList tr').length === 0) {
+                                    $('#bookmarksContainer').html('<div class="alert alert-info bookmarks-empty-state">Chưa có bookmark nào</div>');
+                                }
+                            });
+                        }, 300);
                     }
                 });
 
-                connection.start().catch(err => console.error('SignalR error:', err));
+                // Listen for bookmark updated
+                connection.on('BookmarkUpdated', function (data) {
+                    console.log('Bookmark updated:', data);
+                    window.NotificationHub.showLocal(
+                        `✏️ Bookmark đã được cập nhật: ${data.Title}`,
+                        'info'
+                    );
+                    
+                    // Highlight the updated row
+                    const $row = $(`tr[data-bookmark-id="${data.BookmarkId}"]`);
+                    if ($row.length > 0) {
+                        $row.addClass('bookmark-updated');
+                        setTimeout(() => {
+                            $row.removeClass('bookmark-updated');
+                        }, 1500);
+                    }
+                    
+                    // Refresh list after a delay
+                    setTimeout(function () {
+                        const query = $('#searchQuery').val();
+                        loadBookmarks(query);
+                    }, 500);
+                });
+
+                // Also listen for general notifications about bookmarks
+                connection.on('ReceiveNotification', function (message) {
+                    if (message.toLowerCase().includes('bookmark')) {
+                        console.log('General bookmark notification:', message);
+                    }
+                });
+
+                // Update real-time indicator
+                function updateRealtimeIndicator() {
+                    const indicator = $('#realtimeIndicator');
+                    if (connection && connection.state === signalR.HubConnectionState.Connected) {
+                        indicator.removeClass('disconnected');
+                    } else {
+                        indicator.addClass('disconnected');
+                    }
+                }
+
+                // Check connection status periodically
+                setInterval(updateRealtimeIndicator, 2000);
+                updateRealtimeIndicator();
             }
         });
     </script>

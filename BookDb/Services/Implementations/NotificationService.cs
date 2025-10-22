@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR;
 using BookDb.Hubs;
 
 namespace BookDb.Services.Implementations
@@ -74,14 +74,42 @@ namespace BookDb.Services.Implementations
 
         public async Task NotifyBookmarkCreatedAsync(string documentTitle, int pageNumber)
         {
-            var message = $"🔖 Bookmark mới: {documentTitle} - Trang {pageNumber}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"🔖 Bookmark mới: {documentTitle} - Trang {pageNumber}";
+                
+                // Send both general notification and specific BookmarkCreated event
+                await SendGlobalNotificationAsync(message);
+                
+                // You can also send specific event if needed
+                await _hubContext.Clients.All.SendAsync("BookmarkCreated", new
+                {
+                    DocumentTitle = documentTitle,
+                    PageNumber = pageNumber,
+                    Timestamp = DateTime.UtcNow
+                });
+                
+                _logger.LogInformation("Bookmark created notification sent for: {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark created notification");
+            }
         }
 
         public async Task NotifyBookmarkDeletedAsync(string bookmarkTitle)
         {
-            var message = $"❌ Bookmark đã bị xóa: {bookmarkTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"❌ Bookmark đã bị xóa: {bookmarkTitle}";
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Bookmark deleted notification sent for: {BookmarkTitle}", bookmarkTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark deleted notification");
+            }
         }
 
         public async Task NotifyPageEditedAsync(int documentId, int pageId)

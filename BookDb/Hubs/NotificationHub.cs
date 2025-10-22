@@ -56,6 +56,39 @@ namespace BookDb.Hubs
             });
         }
 
+        // Bookmark-specific notifications
+        public async Task NotifyBookmarkCreated(int bookmarkId, string title, int documentId, int pageNumber)
+        {
+            await Clients.All.SendAsync("BookmarkCreated", new
+            {
+                BookmarkId = bookmarkId,
+                Title = title,
+                DocumentId = documentId,
+                PageNumber = pageNumber,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        public async Task NotifyBookmarkDeleted(int bookmarkId, string title)
+        {
+            await Clients.All.SendAsync("BookmarkDeleted", new
+            {
+                BookmarkId = bookmarkId,
+                Title = title,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        public async Task NotifyBookmarkUpdated(int bookmarkId, string title)
+        {
+            await Clients.All.SendAsync("BookmarkUpdated", new
+            {
+                BookmarkId = bookmarkId,
+                Title = title,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
         private static string GetGroupName(int documentId) => $"doc-{documentId}";
     }
 }

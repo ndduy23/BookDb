@@ -1,4 +1,4 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
@@ -9,13 +9,22 @@ namespace BookDb.Services.Implementations
     {
         private readonly IBookmarkRepository _bookmarkRepo;
         private readonly IDocumentPageRepository _pageRepo;
-        private readonly AppDbContext _context; 
+        private readonly AppDbContext _context;
+        private readonly INotificationService _notificationService;
+        private readonly ILogger<BookmarkService> _logger;
 
-        public BookmarkService(IBookmarkRepository bookmarkRepo, IDocumentPageRepository pageRepo, AppDbContext context)
+        public BookmarkService(
+            IBookmarkRepository bookmarkRepo, 
+            IDocumentPageRepository pageRepo, 
+            AppDbContext context,
+            INotificationService notificationService,
+            ILogger<BookmarkService> logger)
         {
             _bookmarkRepo = bookmarkRepo;
             _pageRepo = pageRepo;
             _context = context;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         public Task<List<Bookmark>> GetBookmarksAsync(string? q)
@@ -37,16 +46,29 @@ namespace BookDb.Services.Implementations
                 return (false, "Bookmark cho trang này đã tồn tại.");
             }
 
+            var bookmarkTitle = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}";
             var bookmark = new Bookmark
             {
                 DocumentPageId = documentPageId,
                 Url = url,
-                Title = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}",
+                Title = bookmarkTitle,
                 CreatedAt = DateTime.UtcNow
             };
 
             await _bookmarkRepo.AddAsync(bookmark);
             await _context.SaveChangesAsync();
+
+            // Send SignalR notification
+            try
+            {
+                var documentTitle = page.Document?.Title ?? "Tài liệu";
+                await _notificationService.NotifyBookmarkCreatedAsync(documentTitle, page.PageNumber);
+                _logger.LogInformation("Bookmark created notification sent for: {BookmarkTitle}", bookmarkTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark created notification");
+            }
 
             return (true, null);
         }
@@ -56,8 +78,22 @@ namespace BookDb.Services.Implementations
             var bookmark = await _bookmarkRepo.GetByIdAsync(id);
             if (bookmark == null) return false;
 
+            var bookmarkTitle = bookmark.Title ?? "Bookmark";
+
             _bookmarkRepo.Delete(bookmark);
             await _context.SaveChangesAsync();
+
+            // Send SignalR notification
+            try
+            {
+                await _notificationService.NotifyBookmarkDeletedAsync(bookmarkTitle);
+                _logger.LogInformation("Bookmark deleted notification sent for: {BookmarkTitle}", bookmarkTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark deleted notification");
+            }
+
             return true;
         }
 

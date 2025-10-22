@@ -56,35 +56,36 @@ namespace BookDb.Hubs
             });
         }
 
-        // Bookmark-specific notifications
-        public async Task NotifyBookmarkCreated(int bookmarkId, string title, int documentId, int pageNumber)
+        // Document editing notifications - for real-time collaboration
+        public async Task NotifyDocumentEditingStarted(int documentId, string documentTitle, string userName)
         {
-            await Clients.All.SendAsync("BookmarkCreated", new
+            await Clients.Others.SendAsync("DocumentEditingStarted", new
             {
-                BookmarkId = bookmarkId,
-                Title = title,
                 DocumentId = documentId,
-                PageNumber = pageNumber,
+                DocumentTitle = documentTitle,
+                UserName = userName,
                 Timestamp = DateTime.UtcNow
             });
         }
 
-        public async Task NotifyBookmarkDeleted(int bookmarkId, string title)
+        public async Task NotifyDocumentEditingEnded(int documentId, string userName)
         {
-            await Clients.All.SendAsync("BookmarkDeleted", new
+            await Clients.Others.SendAsync("DocumentEditingEnded", new
             {
-                BookmarkId = bookmarkId,
-                Title = title,
+                DocumentId = documentId,
+                UserName = userName,
                 Timestamp = DateTime.UtcNow
             });
         }
 
-        public async Task NotifyBookmarkUpdated(int bookmarkId, string title)
+        public async Task NotifyDocumentFieldChanged(int documentId, string fieldName, string newValue, string userName)
         {
-            await Clients.All.SendAsync("BookmarkUpdated", new
+            await Clients.Others.SendAsync("DocumentFieldChanged", new
             {
-                BookmarkId = bookmarkId,
-                Title = title,
+                DocumentId = documentId,
+                FieldName = fieldName,
+                NewValue = newValue,
+                UserName = userName,
                 Timestamp = DateTime.UtcNow
             });
         }

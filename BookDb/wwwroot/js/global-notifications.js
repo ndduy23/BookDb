@@ -36,63 +36,60 @@
         },
 
         setupEventHandlers: function () {
+            // Track if we already added this notification to prevent duplicates
+            const processedNotifications = new Set();
+            
             // Handle general notifications
             connection.on('ReceiveNotification', (message) => {
                 console.log('Notification received:', message);
-                this.addNotification(message, 'info');
-                this.showToast(message, 'info');
+                
+                // Create unique key for this notification
+                const notificationKey = `${message}_${Date.now()}`;
+                
+                // Only process if not duplicate within 1 second
+                if (!processedNotifications.has(message)) {
+                    processedNotifications.add(message);
+                    this.addNotification(message, 'info');
+                    this.showToast(message, 'info');
+                    
+                    // Remove from set after 1 second to allow same message later
+                    setTimeout(() => processedNotifications.delete(message), 1000);
+                }
             });
 
-            // Handle page changes
+            // Handle page changes (only show toast, not duplicate in panel)
             connection.on('PageAdded', (data) => {
                 const message = `📄 Trang mới được thêm: Trang ${data.PageNumber}`;
-                this.addNotification(message, 'success');
                 this.showToast(message, 'success');
             });
 
             connection.on('PageUpdated', (data) => {
                 const message = `✏️ Trang ${data.PageNumber} đã được cập nhật`;
-                this.addNotification(message, 'info');
                 this.showToast(message, 'info');
             });
 
             connection.on('PageDeleted', (data) => {
                 const message = `🗑️ Trang ${data.PageNumber} đã bị xóa`;
-                this.addNotification(message, 'warning');
                 this.showToast(message, 'warning');
             });
 
-            // Handle document changes
+            // Handle document changes (only show toast for important events)
             connection.on('DocumentAdded', (data) => {
                 const message = `📚 Tài liệu mới: ${data.Title || 'Không có tiêu đề'}`;
-                this.addNotification(message, 'success');
                 this.showToast(message, 'success');
             });
 
             connection.on('DocumentUpdated', (data) => {
                 const message = `✏️ Tài liệu đã được cập nhật: ${data.Title || ''}`;
-                this.addNotification(message, 'info');
                 this.showToast(message, 'info');
             });
 
             connection.on('DocumentDeleted', (data) => {
                 const message = `🗑️ Tài liệu đã bị xóa: ${data.Title || ''}`;
-                this.addNotification(message, 'warning');
                 this.showToast(message, 'warning');
             });
 
-            // Handle bookmark changes
-            connection.on('BookmarkCreated', (data) => {
-                const message = `🔖 Bookmark mới đã được tạo`;
-                this.addNotification(message, 'success');
-                this.showToast(message, 'success');
-            });
-
-            connection.on('BookmarkDeleted', (data) => {
-                const message = `❌ Bookmark đã bị xóa`;
-                this.addNotification(message, 'warning');
-                this.showToast(message, 'warning');
-            });
+            // Note: Bookmark events are removed - bookmarks are personal, not broadcast
 
             // Connection state handlers
             connection.onreconnecting((error) => {

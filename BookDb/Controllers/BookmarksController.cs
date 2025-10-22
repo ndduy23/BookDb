@@ -131,14 +131,7 @@ namespace BookDb.Controllers
                     return BadRequest();
                 }
 
-                // Send SignalR notification to all clients
-                await _hubContext.Clients.All.SendAsync("BookmarkDeleted", new
-                {
-                    BookmarkId = id,
-                    Title = bookmark.Title ?? "Bookmark",
-                    Timestamp = DateTime.UtcNow
-                });
-
+                // Note: No SignalR broadcast for bookmarks - they are personal
                 _logger.LogInformation("Bookmark {BookmarkId} deleted successfully", id);
 
                 // Return JSON for AJAX requests

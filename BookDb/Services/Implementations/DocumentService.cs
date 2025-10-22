@@ -7,8 +7,7 @@ using iText.Kernel.Pdf;
 using System.Net;
 using System.Text;
 using System.Linq;
-using Microsoft.AspNetCore.SignalR;
-using BookDb.Hubs;
+using BookDb.Services;
 
 namespace BookDb.Services.Implementations
 {
@@ -19,16 +18,22 @@ namespace BookDb.Services.Implementations
         private readonly IBookmarkRepository _bookmarkRepo;
         private readonly IWebHostEnvironment _env;
         private readonly AppDbContext _context;
-        private readonly IHubContext<NotificationHub>? _hubContext;
+        private readonly INotificationService? _notificationService;
 
-        public DocumentService(IDocumentRepository docRepo, IDocumentPageRepository pageRepo, IBookmarkRepository bookmarkRepo, IWebHostEnvironment env, AppDbContext context, IHubContext<NotificationHub>? hubContext = null)
+        public DocumentService(
+            IDocumentRepository docRepo,
+            IDocumentPageRepository pageRepo,
+            IBookmarkRepository bookmarkRepo,
+            IWebHostEnvironment env,
+            AppDbContext context,
+            INotificationService? notificationService = null)
         {
             _docRepo = docRepo;
             _pageRepo = pageRepo;
             _bookmarkRepo = bookmarkRepo;
             _env = env;
             _context = context;
-            _hubContext = hubContext;
+            _notificationService = notificationService;
         }
 
         public Task<List<Document>> GetDocumentsAsync(string? q, int page, int pageSize)
@@ -80,50 +85,46 @@ namespace BookDb.Services.Implementations
             await _docRepo.AddAsync(doc);
             await _context.SaveChangesAsync();
 
+            // Process file based on type
+            string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
+            if (!Directory.Exists(pageDir))
+                Directory.CreateDirectory(pageDir);
+
             if (ext == ".pdf")
             {
-                string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
-                if (!Directory.Exists(pageDir))
-                    Directory.CreateDirectory(pageDir);
-
                 await SplitPdf(savePath, pageDir, doc.Id);
-                await _context.SaveChangesAsync();
             }
             else if (ext == ".xlsx")
             {
-                string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
-                if (!Directory.Exists(pageDir))
-                    Directory.CreateDirectory(pageDir);
-
                 await SplitExcel(savePath, pageDir, doc.Id);
-                await _context.SaveChangesAsync();
             }
             else if (ext == ".txt")
             {
-                string pageDir = Path.Combine(uploads, $"doc_{doc.Id}");
-                if (!Directory.Exists(pageDir))
-                    Directory.CreateDirectory(pageDir);
-
                 await SplitText(savePath, pageDir, doc.Id);
-                await _context.SaveChangesAsync();
             }
 
-            // Notify connected clients about new document
-            try
-            {
-                await _hubContext.Clients.All.SendAsync("ReceiveNotification", $"New document uploaded: {doc.Title}");
-            }
-            catch
-            {
-                // swallow exceptions from hub notifications to avoid breaking upload flow
-            }
+            await _context.SaveChangesAsync();
 
+            // Send notification
+            if (_notificationService != null)
+            {
+                try
+                {
+                    await _notificationService.NotifyDocumentUploadedAsync(doc.Title);
+                }
+                catch
+                {
+                    // Ignore notification errors
+                }
+            }
         }
 
         public async Task<bool> DeleteDocumentAsync(int id)
         {
             var doc = await _docRepo.GetByIdAsync(id);
             if (doc == null) return false;
+
+            var title = doc.Title;
 
             if (!string.IsNullOrEmpty(doc.FilePath))
             {
@@ -135,12 +136,17 @@ namespace BookDb.Services.Implementations
             _docRepo.Delete(doc);
             await _context.SaveChangesAsync();
 
-            try
+            // Send notification
+            if (_notificationService != null)
             {
-                await _hubContext.Clients.All.SendAsync("ReceiveNotification", $"Document deleted: {doc.Title}");
-            }
-            catch
-            {
+                try
+                {
+                    await _notificationService.NotifyDocumentDeletedAsync(title);
+                }
+                catch
+                {
+                    // Ignore notification errors
+                }
             }
 
             return true;
@@ -181,6 +187,20 @@ namespace BookDb.Services.Implementations
 
             _docRepo.Update(doc);
             await _context.SaveChangesAsync();
+
+            // Send notification
+            if (_notificationService != null)
+            {
+                try
+                {
+                    await _notificationService.NotifyDocumentUpdatedAsync(doc.Title);
+                }
+                catch
+                {
+                    // Ignore notification errors
+                }
+            }
+
             return true;
         }
 
@@ -215,20 +235,20 @@ namespace BookDb.Services.Implementations
                 await _pageRepo.AddAsync(page);
             }
         }
+
         private async Task SplitExcel(string sourcePath, string outputDir, int documentId)
         {
             using var workbook = new XLWorkbook(sourcePath);
 
             foreach (var sheet in workbook.Worksheets)
             {
-                // Create an HTML file per sheet so it can be displayed in an iframe
                 string safeName = string.Join("_", sheet.Name.Split(Path.GetInvalidFileNameChars()));
                 string outputFile = Path.Combine(outputDir, $"{safeName}.html");
                 using (var writer = new StreamWriter(outputFile, false, Encoding.UTF8))
                 {
                     await writer.WriteLineAsync("<!doctype html>");
                     await writer.WriteLineAsync("<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + WebUtility.HtmlEncode(sheet.Name) + "</title>");
-                    await writer.WriteLineAsync("<style>table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px}</style>");
+                    await writer.WriteLineAsync("<style>table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f4f4f4;font-weight:bold}</style>");
                     await writer.WriteLineAsync("</head><body>");
                     await writer.WriteLineAsync("<h3>Sheet: " + WebUtility.HtmlEncode(sheet.Name) + "</h3>");
 
@@ -274,12 +294,10 @@ namespace BookDb.Services.Implementations
 
         private async Task SplitText(string sourcePath, string outputDir, int documentId)
         {
-            // Read entire text
             string content = await File.ReadAllTextAsync(sourcePath, Encoding.UTF8);
             if (string.IsNullOrWhiteSpace(content))
                 return;
 
-            // Split into words and create pages of 700 words
             var words = content.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             const int wordsPerPage = 700;
             int totalPages = (int)Math.Ceiling((double)words.Length / wordsPerPage);
@@ -289,12 +307,11 @@ namespace BookDb.Services.Implementations
                 var pageWords = words.Skip(p * wordsPerPage).Take(wordsPerPage);
                 var pageText = string.Join(" ", pageWords);
 
-                // Create simple HTML file for this page
                 string outputFile = Path.Combine(outputDir, $"page_{p + 1}.html");
                 using (var writer = new StreamWriter(outputFile, false, Encoding.UTF8))
                 {
                     await writer.WriteLineAsync("<!doctype html>");
-                    await writer.WriteLineAsync("<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:Arial,Helvetica,sans-serif;padding:12px;white-space:pre-wrap}</style></head><body>");
+                    await writer.WriteLineAsync("<html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:Arial,Helvetica,sans-serif;padding:20px;line-height:1.6;white-space:pre-wrap}</style></head><body>");
                     await writer.WriteLineAsync(WebUtility.HtmlEncode(pageText));
                     await writer.WriteLineAsync("</body></html>");
                 }
@@ -311,7 +328,5 @@ namespace BookDb.Services.Implementations
                 await _pageRepo.AddAsync(page);
             }
         }
-
-
     }
 }

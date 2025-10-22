@@ -1,6 +1,4 @@
-﻿
-
-@model IEnumerable<BookDb.Models.Document>
+﻿@model IEnumerable<BookDb.Models.Document>
 
 @{
     ViewData["Title"] = "Danh sách tài liệu";
@@ -8,42 +6,188 @@
 
 <h2>Danh sách tài liệu</h2>
 
-<p>
-    <a asp-action="Create" class="btn btn-primary">+ Thêm tài liệu mới</a>
-</p>
+<div class="row mb-3">
+    <div class="col-md-8">
+        <a asp-action="Create" class="btn btn-primary">+ Thêm tài liệu mới</a>
+        <button type="button" class="btn btn-info" id="refreshBtn">
+            <span class="spinner-border spinner-border-sm d-none" id="refreshSpinner"></span>
+            Làm mới
+        </button>
+    </div>
+    <div class="col-md-4">
+        <form method="get" asp-action="Index" id="searchForm">
+            <div class="input-group">
+                <input type="text" name="q" id="searchQuery" class="form-control" placeholder="Tìm kiếm..." value="@Context.Request.Query["q"]" />
+                <button type="submit" class="btn btn-info">Tìm</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-<form method="get" asp-action="Index">
-    <input type="text" name="q" placeholder="Tìm kiếm..." value="@Context.Request.Query["q"]" />
-    <button type="submit" class="btn btn-sm btn-info">Tìm</button>
+<div id="documentsTable">
+    <table class="table table-bordered table-striped">
+        <thead>
+            <tr>
+                <th>Tiêu đề</th>
+                <th>Lĩnh vực</th>
+                <th>Tác giả</th>
+                <th>Ngày tạo</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+        <tbody id="documentsList">
+            @foreach (var item in Model)
+            {
+                <tr data-document-id="@item.Id">
+                    <td>@item.Title</td>
+                    <td>@item.Category</td>
+                    <td>@item.Author</td>
+                    <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
+                    <td>
+                        <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
+                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
+                        <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@item.Id">Xóa</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.3); z-index:9998;">
+    <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; border-radius:8px;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2">Đang xử lý...</p>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // Ajax search with debounce
+            let searchTimeout;
+            $('#searchQuery').on('input', function () {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(function () {
+                    performSearch();
+                }, 500);
+            });
+
+            function performSearch() {
+                const query = $('#searchQuery').val();
+                $.ajax({
+                    url: '@Url.Action("Index", "Documents")',
+                    type: 'GET',
+                    data: { q: query },
+                    beforeSend: function () {
+                        $('#refreshSpinner').removeClass('d-none');
+                    },
+                    success: function (response) {
+                        const $html = $(response);
+                        const newTableBody = $html.find('#documentsList').html();
+                        $('#documentsList').html(newTableBody);
+                        window.NotificationHub.showLocal('Đã cập nhật danh sách', 'success');
+                    },
+                    error: function () {
+                        window.NotificationHub.showLocal('Có lỗi khi tìm kiếm', 'error');
+                    },
+                    complete: function () {
+                        $('#refreshSpinner').addClass('d-none');
+                    }
+                });
+            }
+
+            // Ajax refresh
+            $('#refreshBtn').on('click', function () {
+                loadDocuments();
+            });
+
+            function loadDocuments() {
+                $.ajax({
+                    url: '@Url.Action("Index", "Documents")',
+                    type: 'GET',
+                    beforeSend: function () {
+                        $('#refreshSpinner').removeClass('d-none');
+                    },
+                    success: function (response) {
+                        const $html = $(response);
+                        const newTableBody = $html.find('#documentsList').html();
+                        $('#documentsList').html(newTableBody);
+                        window.NotificationHub.showLocal('Đã làm mới danh sách', 'success');
+                    },
+                    error: function () {
+                        window.NotificationHub.showLocal('Có lỗi khi làm mới', 'error');
+                    },
+                    complete: function () {
+                        $('#refreshSpinner').addClass('d-none');
+                    }
+                });
+            }
+
+            // Ajax delete with SignalR notification
+            $(document).on('click', '.delete-btn', function () {
+                const documentId = $(this).data('id');
+                const $row = $(this).closest('tr');
+                const title = $row.find('td:first').text();
+
+                if (!confirm('Bạn có chắc muốn xóa tài liệu "' + title + '"?')) {
+                    return;
+                }
+
+                $.ajax({
+                    url: '@Url.Action("Delete", "Documents")/' + documentId,
+                    type: 'POST',
+                    data: {
+                        __RequestVerificationToken: $('input[name="__RequestVerificationToken"]').val()
+                    },
+                    beforeSend: function () {
+                        $('#loadingOverlay').show();
+                    },
+                    success: function (response) {
+                        $row.fadeOut(300, function () {
+                            $(this).remove();
+                        });
+                        window.NotificationHub.showLocal('Đã xóa tài liệu: ' + title, 'success');
+
+                        // Send notification to all users via SignalR
+                        window.NotificationHub.sendNotification('Tài liệu "' + title + '" đã bị xóa');
+                    },
+                    error: function (xhr) {
+                        let errorMsg = 'Có lỗi khi xóa tài liệu';
+                        if (xhr.status === 404) {
+                            errorMsg = 'Không tìm thấy tài liệu';
+                        }
+                        window.NotificationHub.showLocal(errorMsg, 'error');
+                    },
+                    complete: function () {
+                        $('#loadingOverlay').hide();
+                    }
+                });
+            });
+
+            // Listen for document notifications from other users
+            if (window.signalR) {
+                const connection = new signalR.HubConnectionBuilder()
+                    .withUrl('/notify')
+                    .build();
+
+                connection.on('ReceiveNotification', function (message) {
+                    // If message is about document changes, refresh the list
+                    if (message.includes('uploaded') || message.includes('deleted')) {
+                        setTimeout(loadDocuments, 1000);
+                    }
+                });
+
+                connection.start().catch(err => console.error(err));
+            }
+        });
+    </script>
+}
+
+@* Hidden anti-forgery token for AJAX requests *@
+<form id="__AjaxAntiForgeryForm" style="display:none">
+    @Html.AntiForgeryToken()
 </form>
-
-<table class="table table-bordered table-striped mt-3">
-    <thead>
-        <tr>
-            <th>Tiêu đề</th>
-            <th>Lĩnh vực</th>
-            <th>Tác giả</th>
-            <th>Ngày tạo</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    @foreach (var item in Model)
-    {
-        <tr>
-            <td>@item.Title</td>
-            <td>@item.Category</td>
-            <td>@item.Author</td>
-            <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
-            <td>
-                <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
-                <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
-                <form asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline">
-                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Xóa tài liệu này?')">Xóa</button>
-                </form>
-            </td>
-        </tr>
-    }
-    </tbody>
-</table>
-

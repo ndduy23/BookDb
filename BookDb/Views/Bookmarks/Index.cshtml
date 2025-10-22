@@ -4,51 +4,213 @@
     ViewData["Title"] = "Danh sách Bookmark";
 }
 
-
 <h2>Danh sách Bookmark</h2>
 
+<div class="row mb-3">
+    <div class="col-md-8">
+        <button type="button" class="btn btn-info" id="refreshBookmarks">
+            <span id="refreshSpinner" class="spinner-border spinner-border-sm d-none"></span>
+            Làm mới
+        </button>
+    </div>
+    <div class="col-md-4">
+        <form method="get" asp-action="Index" id="searchForm">
+            <div class="input-group">
+                <input type="text" name="q" id="searchQuery" class="form-control"
+                       placeholder="Tìm theo tên tài liệu..."
+                       value="@Context.Request.Query["q"]" />
+                <button type="submit" class="btn btn-info">Tìm</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-
-<form method="get" asp-action="Index">
-    <input type="text" name="q" placeholder="Tìm theo tên tài liệu..." value="@Context.Request.Query["q"]" />
-    <button type="submit" class="btn btn-sm btn-info">Tìm</button>
-</form>
-
-
-
-<table class="table table-bordered table-striped mt-3">
-    <thead>
-        <tr>
-            <th>Tài liệu</th>
-            <th>Trang</th>
-            <th>Ghi chú</th>
-            <th>Ngày tạo</th>
-            <th></th>
-        </tr>
-    </thead>
-    <tbody>
-    @foreach (var item in Model)
+<div id="bookmarksContainer">
+    @if (!Model.Any())
     {
-        <tr>
-            <td>@item.DocumentPage?.Document?.Title</td>
-            <td>@item.DocumentPage?.PageNumber</td>
-            <td>@item.Title</td>
-            <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
-            <td>
-                <!-- Xem -->
-                <a asp-controller="Documents" asp-action="ViewDocument"
-                   asp-route-id="@item.DocumentPage?.DocumentId"
-                   asp-route-mode="paged"
-                   asp-route-page="@item.DocumentPage?.PageNumber"
-                   class="btn btn-sm btn-success">Xem</a>
-
-                <!-- Xóa -->
-                <form asp-controller="Bookmarks" asp-action="Delete" asp-route-id="@item.Id" method="post" style="display:inline">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Xóa bookmark này?')">Xóa</button>
-                </form>
-            </td>
-        </tr>
+        <div class="alert alert-info">
+            Chưa có bookmark nào. Hãy thêm bookmark khi xem tài liệu!
+        </div>
     }
-    </tbody>
-</table>
+    else
+    {
+        <table class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Tài liệu</th>
+                    <th>Trang</th>
+                    <th>Ghi chú</th>
+                    <th>Ngày tạo</th>
+                    <th style="width: 200px;">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody id="bookmarksList">
+                @foreach (var item in Model)
+                {
+                    <tr data-bookmark-id="@item.Id">
+                        <td>@item.DocumentPage?.Document?.Title</td>
+                        <td class="text-center">@item.DocumentPage?.PageNumber</td>
+                        <td>@item.Title</td>
+                        <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>
+                            <a asp-controller="Documents" asp-action="ViewDocument"
+                               asp-route-id="@item.DocumentPage?.DocumentId"
+                               asp-route-mode="paged"
+                               asp-route-page="@item.DocumentPage?.PageNumber"
+                               class="btn btn-sm btn-success">Xem</a>
+
+                            <button type="button" class="btn btn-sm btn-danger delete-bookmark-btn"
+                                    data-id="@item.Id"
+                                    data-title="@item.Title">
+                                Xóa
+                            </button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<!-- Modal for Bookmark Details -->
+<div class="modal fade" id="bookmarkModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Chi tiết Bookmark</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="bookmarkModalBody">
+                <!-- Content loaded via AJAX -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        $(document).ready(function () {
+            // Ajax search with debounce
+            let searchTimeout;
+            $('#searchQuery').on('input', function () {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(function () {
+                    performSearch();
+                }, 500);
+            });
+
+            function performSearch() {
+                const query = $('#searchQuery').val();
+                loadBookmarks(query);
+            }
+
+            // Refresh bookmarks
+            $('#refreshBookmarks').on('click', function () {
+                const query = $('#searchQuery').val();
+                loadBookmarks(query);
+            });
+
+            function loadBookmarks(query = '') {
+                $.ajax({
+                    url: '@Url.Action("Index", "Bookmarks")',
+                    type: 'GET',
+                    data: { q: query },
+                    beforeSend: function () {
+                        $('#refreshSpinner').removeClass('d-none');
+                    },
+                    success: function (response) {
+                        const $html = $(response);
+                        const newContent = $html.find('#bookmarksList').html();
+
+                        if (newContent) {
+                            $('#bookmarksList').html(newContent);
+                            window.NotificationHub.showLocal('Đã cập nhật danh sách', 'success');
+                        } else {
+                            $('#bookmarksContainer').html('<div class="alert alert-info">Không tìm thấy bookmark nào</div>');
+                        }
+                    },
+                    error: function () {
+                        window.NotificationHub.showLocal('Có lỗi khi tải danh sách', 'error');
+                    },
+                    complete: function () {
+                        $('#refreshSpinner').addClass('d-none');
+                    }
+                });
+            }
+
+            // Delete bookmark with Ajax
+            $(document).on('click', '.delete-bookmark-btn', function () {
+                const bookmarkId = $(this).data('id');
+                const title = $(this).data('title') || 'bookmark này';
+                const $row = $(this).closest('tr');
+
+                if (!confirm(`Bạn có chắc muốn xóa "${title}"?`)) {
+                    return;
+                }
+
+                $.ajax({
+                    url: '@Url.Action("Delete", "Bookmarks")/' + bookmarkId,
+                    type: 'POST',
+                    data: {
+                        __RequestVerificationToken: $('input[name="__RequestVerificationToken"]').val()
+                    },
+                    beforeSend: function () {
+                        $row.css('opacity', '0.5');
+                    },
+                    success: function () {
+                        $row.fadeOut(300, function () {
+                            $(this).remove();
+
+                            // Check if no more bookmarks
+                            if ($('#bookmarksList tr').length === 0) {
+                                $('#bookmarksContainer').html('<div class="alert alert-info">Chưa có bookmark nào</div>');
+                            }
+                        });
+
+                        window.NotificationHub.showLocal('Đã xóa bookmark', 'success');
+
+                        // Notify other users
+                        if (window.NotificationHub) {
+                            window.NotificationHub.sendNotification(`Bookmark "${title}" đã bị xóa`);
+                        }
+                    },
+                    error: function (xhr) {
+                        $row.css('opacity', '1');
+                        let errorMsg = 'Có lỗi khi xóa bookmark';
+                        if (xhr.status === 404) {
+                            errorMsg = 'Không tìm thấy bookmark';
+                        }
+                        window.NotificationHub.showLocal(errorMsg, 'error');
+                    }
+                });
+            });
+
+            // Listen for bookmark changes via SignalR
+            if (window.signalR) {
+                const connection = new signalR.HubConnectionBuilder()
+                    .withUrl('/notify')
+                    .build();
+
+                connection.on('ReceiveNotification', function (message) {
+                    // If notification is about bookmarks, refresh the list
+                    if (message.toLowerCase().includes('bookmark')) {
+                        setTimeout(function () {
+                            const query = $('#searchQuery').val();
+                            loadBookmarks(query);
+                        }, 1000);
+                    }
+                });
+
+                connection.start().catch(err => console.error('SignalR error:', err));
+            }
+        });
+    </script>
+}
+
+@* Anti-forgery token for AJAX *@
+<form id="__AjaxAntiForgeryForm" style="display:none">
+    @Html.AntiForgeryToken()
+</form>

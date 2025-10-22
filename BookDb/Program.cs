@@ -8,7 +8,7 @@ using BookDb.Services.Interfaces;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repositories.Implementations;
 using BookDb.Hubs;
-
+using BookDb.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,23 +21,28 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 builder.Services.AddSingleton<FileStorageService>();
 
+// Repositories
 builder.Services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 builder.Services.AddScoped<IDocumentRepository, DocumentRepository>();
 builder.Services.AddScoped<IBookmarkRepository, BookmarkRepository>();
 builder.Services.AddScoped<IDocumentPageRepository, DocumentPageRepository>();
 
-// Đăng ký các Services
+// Services
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IBookmarkService, BookmarkService>();
 builder.Services.AddScoped<IDocumentPageService, DocumentPageService>();
-
-
+builder.Services.AddScoped<INotificationService, NotificationService>();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
 // Add SignalR
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    options.EnableDetailedErrors = true;
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
 
 // Cấu hình Razor View Engine
 builder.Services.Configure<RazorViewEngineOptions>(options =>
@@ -45,6 +50,16 @@ builder.Services.Configure<RazorViewEngineOptions>(options =>
     options.ViewLocationFormats.Add("/MyViews/{1}/{0}" + RazorViewEngine.ViewExtension);
 });
 
+// Add CORS for SignalR (if needed)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
 // ====== Build app ======
 var app = builder.Build();
@@ -63,10 +78,13 @@ else
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
-// Tùy biến lỗi từ 400–599 (có thể là extension AddStatusCodePage bạn định nghĩa)
+// Tùy biến lỗi từ 400–599
 app.AddStatusCodePage();
 
 app.UseRouting();
+
+// CORS (if needed)
+app.UseCors("AllowAll");
 
 app.UseAuthentication();
 app.UseAuthorization();

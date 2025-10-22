@@ -92,6 +92,7 @@
             else
             {
                 <form asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline" onsubmit="return showBookmarkMessage();">
+                    @Html.AntiForgeryToken()
                     <input type="hidden" name="documentPageId" value="@(currentPageDoc.Id)" />
                     <button type="submit" class="btn btn-primary">Thêm Bookmark</button>
                 </form>
@@ -126,29 +127,72 @@ else
     (function () {
         var docId = @Model.Id;
         var currentPageId = @((currentPage != null) ? currentPage.Id : 0);
+        var currentPageNumber = page;
+        var mode = '@mode';
 
-        function onPageChanged(payload) {
+        function onPageChanged(payload, action) {
             try {
-                // If the changed page is the same as currently displayed, reload the iframe
-                if (payload && payload.PageId && payload.PageId === currentPageId) {
-                    var frame = document.getElementById('docFrame');
-                    if (frame) {
-                        // Reload iframe to fetch latest content
-                        frame.src = frame.src;
-                        // Optionally show a brief notification
-                        console.info('Page updated externally, reloaded.');
+                console.log('Page change detected:', action, payload);
+
+                if (action === 'updated') {
+                    // If the changed page is the same as currently displayed, reload the iframe
+                    if (payload && payload.PageId && payload.PageId === currentPageId) {
+                        var frame = document.getElementById('docFrame');
+                        if (frame) {
+                            // Add timestamp to force reload
+                            var src = frame.src.split('?')[0];
+                            frame.src = src + '?t=' + new Date().getTime();
+                            console.info('Page updated externally, reloaded iframe.');
+                        }
+                    } else if (payload && payload.PageNumber && payload.PageNumber === currentPageNumber) {
+                        // Reload the entire page to reflect changes
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
+                    }
+                } else if (action === 'added') {
+                    // A new page was added, optionally reload to show updated page count
+                    console.info('New page added to document');
+                    // Could show a notification to refresh
+                    if (confirm('Có trang mới được thêm vào. Tải lại trang để xem?')) {
+                        location.reload();
+                    }
+                } else if (action === 'deleted') {
+                    // A page was deleted
+                    if (payload && payload.PageId && payload.PageId === currentPageId) {
+                        // Current page was deleted, redirect to first page or document list
+                        alert('Trang hiện tại đã bị xóa. Chuyển về trang đầu.');
+                        window.location.href = '/documents/view/@Model.Id?mode=paged&page=1';
+                    } else if (payload && payload.PageNumber && payload.PageNumber === currentPageNumber) {
+                        setTimeout(function() {
+                            location.reload();
+                        }, 1000);
                     }
                 }
             } catch (e) {
-                console.error(e);
+                console.error('Error handling page change:', e);
             }
         }
 
+        // Start SignalR notification system
         startDocumentNotify(docId, onPageChanged);
+
         // Leave group when navigating away
         window.addEventListener('beforeunload', function () {
             stopDocumentNotify(docId);
         });
+
+        // Auto-reload iframe periodically as a fallback (optional)
+        // Uncomment if you want periodic refresh
+        /*
+        setInterval(function() {
+            var frame = document.getElementById('docFrame');
+            if (frame && mode === 'paged') {
+                var src = frame.src.split('?')[0];
+                frame.src = src + '?t=' + new Date().getTime();
+            }
+        }, 30000); // Every 30 seconds
+        */
     })();
 </script>
 
@@ -164,8 +208,6 @@ else
     }
 </script>
 
-
 <p class="mt-3">
     <a asp-action="Index" class="btn btn-secondary">← Quay lại danh sách</a>
 </p>
-

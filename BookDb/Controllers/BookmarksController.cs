@@ -40,6 +40,12 @@ namespace BookDb.Controllers
                 var page = await _bookmarkService.GetDocumentPageForBookmarkCreation(documentPageId); 
                 if (page == null)
                 {
+                    // Check if AJAX request
+                    if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                    {
+                        return Json(new { success = false, message = "Trang không tồn tại." });
+                    }
+                    
                     TempData["ErrorMessage"] = "Trang không tồn tại.";
                     return Redirect(Request.Headers["Referer"].ToString() ?? "/");
                 }
@@ -51,12 +57,31 @@ namespace BookDb.Controllers
 
                 if (!result.Success)
                 {
+                    // Check if AJAX request
+                    if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                    {
+                        return Json(new { 
+                            success = false, 
+                            message = result.ErrorMessage ?? "Không thể tạo bookmark." 
+                        });
+                    }
+                    
                     TempData["ErrorMessage"] = result.ErrorMessage;
                 }
                 else
                 {
+                    // Check if AJAX request
+                    if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                    {
+                        return Json(new { 
+                            success = true, 
+                            message = "Bookmark đã được lưu thành công!",
+                            bookmarkId = result.BookmarkId ?? 0
+                        });
+                    }
+                    
                     TempData["SuccessMessage"] = "Bookmark đã được tạo thành công!";
-                    _logger.LogInformation("Bookmark created successfully for page {PageId}", documentPageId);
+                    _logger.LogInformation("Bookmark created successfully for page {PageId} with ID {BookmarkId}", documentPageId, result.BookmarkId);
                 }
 
                 return Redirect(Request.Headers["Referer"].ToString() ?? "/");
@@ -64,6 +89,13 @@ namespace BookDb.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating bookmark for page {PageId}", documentPageId);
+                
+                // Check if AJAX request
+                if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+                {
+                    return Json(new { success = false, message = "Có lỗi xảy ra khi tạo bookmark." });
+                }
+                
                 TempData["ErrorMessage"] = "Có lỗi xảy ra khi tạo bookmark.";
                 return Redirect(Request.Headers["Referer"].ToString() ?? "/");
             }

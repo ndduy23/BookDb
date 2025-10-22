@@ -32,18 +32,18 @@ namespace BookDb.Services.Implementations
             return _bookmarkRepo.GetFilteredBookmarksAsync(q);
         }
 
-        public async Task<(bool Success, string? ErrorMessage)> CreateBookmarkAsync(int documentPageId, string? title, string url)
+        public async Task<(bool Success, string? ErrorMessage, int? BookmarkId)> CreateBookmarkAsync(int documentPageId, string? title, string url)
         {
             var page = await _pageRepo.GetByIdWithDocumentAsync(documentPageId);
             if (page == null)
             {
-                return (false, "Trang tài liệu không tồn tại.");
+                return (false, "Trang tài liệu không tồn tại.", null);
             }
 
             bool exists = await _bookmarkRepo.ExistsAsync(documentPageId);
             if (exists)
             {
-                return (false, "Bookmark cho trang này đã tồn tại.");
+                return (false, "Không lưu được vì đã có bookmark trên trang này.", null);
             }
 
             var bookmarkTitle = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}";
@@ -70,7 +70,7 @@ namespace BookDb.Services.Implementations
                 _logger.LogError(ex, "Error sending bookmark created notification");
             }
 
-            return (true, null);
+            return (true, null, bookmark.Id);
         }
 
         public async Task<bool> DeleteBookmarkAsync(int id)

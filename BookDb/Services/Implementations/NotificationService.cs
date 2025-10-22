@@ -56,60 +56,65 @@ namespace BookDb.Services.Implementations
 
         public async Task NotifyDocumentUploadedAsync(string documentTitle)
         {
-            var message = $"📄 Tài liệu mới đã được thêm: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"📄 Tài liệu mới đã được thêm: {documentTitle}";
+                
+                // Send global notification (will be received once by all users)
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Document uploaded notification sent: {DocumentTitle}", documentTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document uploaded notification");
+            }
         }
 
         public async Task NotifyDocumentDeletedAsync(string documentTitle)
         {
-            var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Document deleted notification sent: {DocumentTitle}", documentTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document deleted notification");
+            }
         }
 
         public async Task NotifyDocumentUpdatedAsync(string documentTitle)
         {
-            var message = $"✏️ Tài liệu đã được cập nhật: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
-        }
-
-        public async Task NotifyBookmarkCreatedAsync(string documentTitle, int pageNumber)
-        {
             try
             {
-                var message = $"🔖 Bookmark mới: {documentTitle} - Trang {pageNumber}";
-                
-                // Send both general notification and specific BookmarkCreated event
+                var message = $"✏️ Tài liệu đã được cập nhật: {documentTitle}";
                 await SendGlobalNotificationAsync(message);
                 
-                // You can also send specific event if needed
-                await _hubContext.Clients.All.SendAsync("BookmarkCreated", new
-                {
-                    DocumentTitle = documentTitle,
-                    PageNumber = pageNumber,
-                    Timestamp = DateTime.UtcNow
-                });
-                
-                _logger.LogInformation("Bookmark created notification sent for: {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
+                _logger.LogInformation("Document updated notification sent: {DocumentTitle}", documentTitle);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending bookmark created notification");
+                _logger.LogError(ex, "Error sending document updated notification");
             }
+        }
+
+        // Note: Bookmark methods kept for backward compatibility but not used
+        // Bookmarks are personal and should not broadcast to other users
+        public async Task NotifyBookmarkCreatedAsync(string documentTitle, int pageNumber)
+        {
+            // Deprecated: Bookmarks are personal, no notification sent
+            _logger.LogInformation("Bookmark created (no notification): {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
+            await Task.CompletedTask;
         }
 
         public async Task NotifyBookmarkDeletedAsync(string bookmarkTitle)
         {
-            try
-            {
-                var message = $"❌ Bookmark đã bị xóa: {bookmarkTitle}";
-                await SendGlobalNotificationAsync(message);
-                
-                _logger.LogInformation("Bookmark deleted notification sent for: {BookmarkTitle}", bookmarkTitle);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sending bookmark deleted notification");
-            }
+            // Deprecated: Bookmarks are personal, no notification sent
+            _logger.LogInformation("Bookmark deleted (no notification): {BookmarkTitle}", bookmarkTitle);
+            await Task.CompletedTask;
         }
 
         public async Task NotifyPageEditedAsync(int documentId, int pageId)

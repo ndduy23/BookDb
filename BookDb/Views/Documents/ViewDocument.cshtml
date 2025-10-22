@@ -83,13 +83,15 @@
 {
     if (Model.Pages != null && Model.Pages.Any())
     {
-        var currentPageDoc = Model.Pages
+        // Use the page from ViewBag which has Bookmark loaded
+        var currentPageDoc = currentPage ?? Model.Pages
             .OrderBy(p => p.PageNumber)
             .FirstOrDefault(p => p.PageNumber == page);
 
         if (currentPageDoc != null)
         {
             var iframeSrc = Url.Content(currentPageDoc.FilePath ?? "");
+            // Check bookmark from the loaded page entity (ViewBag.Page has Bookmark included)
             bool hasBookmark = currentPageDoc.Bookmark != null;
 
             // If the generated page is HTML (from Excel), show it directly. Otherwise (PDF) show inside an iframe as well.

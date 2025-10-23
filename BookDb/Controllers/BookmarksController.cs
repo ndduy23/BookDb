@@ -29,6 +29,13 @@ namespace BookDb.Controllers
             var bookmarks = await _bookmarkService.GetBookmarksAsync(q);
             var viewModel = new IndexModel();
             viewModel.Initialize(bookmarks, q);
+            
+            // Return partial view for AJAX requests
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                return PartialView("_BookmarksTablePartial", viewModel);
+            }
+            
             return View(viewModel);
         }
 

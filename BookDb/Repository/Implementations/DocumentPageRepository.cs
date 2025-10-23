@@ -32,5 +32,14 @@ namespace BookDb.Repositories.Implementations
                 .Include(p => p.Bookmark)
                 .FirstOrDefaultAsync(p => p.Id == id);
         }
+
+        public async Task<IEnumerable<DocumentPage>> GetPagesWithBookmarksAsync(int documentId)
+        {
+            return await _context.DocumentPages
+                .Include(p => p.Bookmark)
+                .Where(p => p.DocumentId == documentId)
+                .OrderBy(p => p.PageNumber)
+                .ToListAsync();
+        }
     }
 }

@@ -63,6 +63,9 @@ namespace BookDb.Services.Implementations
                 // Send global notification (will be received once by all users)
                 await SendGlobalNotificationAsync(message);
                 
+                // Send structured DocumentAdded event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("DocumentAdded", new { Title = documentTitle });
+                
                 _logger.LogInformation("Document uploaded notification sent: {DocumentTitle}", documentTitle);
             }
             catch (Exception ex)
@@ -76,7 +79,12 @@ namespace BookDb.Services.Implementations
             try
             {
                 var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
+                
+                // Send both text notification and structured event
                 await SendGlobalNotificationAsync(message);
+                
+                // Send structured DocumentDeleted event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("DocumentDeleted", new { Title = documentTitle });
                 
                 _logger.LogInformation("Document deleted notification sent: {DocumentTitle}", documentTitle);
             }

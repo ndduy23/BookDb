@@ -159,13 +159,11 @@
                         $('#loadingOverlay').show();
                     },
                     success: function (response) {
-                        $row.fadeOut(300, function () {
-                            $(this).remove();
-                        });
                         window.NotificationHub.showLocal('Đã xóa tài liệu: ' + title, 'success');
-
-                        // Send notification to all users via SignalR
-                        window.NotificationHub.sendNotification('Tài liệu "' + title + '" đã bị xóa');
+                        
+                        // Reload table immediately after delete
+                        // SignalR DocumentDeleted event will also trigger reload for other clients
+                        reloadDocumentsTable();
                     },
                     error: function (xhr) {
                         let errorMsg = 'Có lỗi khi xóa tài liệu';

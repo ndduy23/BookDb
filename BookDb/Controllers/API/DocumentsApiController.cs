@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using BookDb.Services.Interfaces;
 using BookDb.Models;
 using Microsoft.AspNetCore.SignalR;
@@ -158,9 +158,23 @@ namespace BookDb.Controllers.Api
                 if (!success)
                     return NotFound(new { success = false, message = "Không tìm thấy tài liệu" });
 
-                // Send SignalR notification
+                // Get updated document to send full data via SignalR
+                var updatedDoc = await _docService.GetDocumentByIdAsync(id);
+
+                // Send SignalR notification with detailed document info
                 await _hubContext.Clients.All.SendAsync("ReceiveNotification",
                     $"Tài liệu '{title}' đã được cập nhật");
+
+                // Send detailed document update event for auto-refresh
+                await _hubContext.Clients.All.SendAsync("DocumentUpdated", new
+                {
+                    Id = id,
+                    Title = updatedDoc.Title,
+                    Category = updatedDoc.Category,
+                    Author = updatedDoc.Author,
+                    CreatedAt = updatedDoc.CreatedAt.ToString("dd/MM/yyyy"),
+                    UpdatedAt = updatedDoc.UpdatedAt.ToString("dd/MM/yyyy HH:mm")
+                });
 
                 return Ok(new { success = true, message = "Cập nhật thành công" });
             }

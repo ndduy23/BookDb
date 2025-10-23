@@ -1,10 +1,10 @@
-@model IEnumerable<BookDb.Models.Document>
+@model BookDb.Views.Documents.IndexModel
 
 @{
-    ViewData["Title"] = "Danh sách tài liệu";
+    ViewData["Title"] = Model.Title;
 }
 
-<h2>Danh sách tài liệu</h2>
+<h2>@Model.Title</h2>
 
 <div class="row mb-3">
     <div class="col-md-8">
@@ -17,7 +17,7 @@
     <div class="col-md-4">
         <form method="get" asp-action="Index" id="searchForm">
             <div class="input-group">
-                <input type="text" name="q" id="searchQuery" class="form-control" placeholder="Tìm kiếm..." value="@Context.Request.Query["q"]" />
+                <input type="text" name="q" id="searchQuery" class="form-control" placeholder="Tìm kiếm..." value="@Model.SearchQuery" />
                 <button type="submit" class="btn btn-info">Tìm</button>
             </div>
         </form>
@@ -35,14 +35,14 @@
                 <th>Thao tác</th>
             </tr>
         </thead>
-        <tbody id="documentsList">
-            @foreach (var item in Model)
+            <tbody id="documentsList">
+            @foreach (var item in Model.Documents)
             {
                 <tr data-document-id="@item.Id">
                     <td>@item.Title</td>
                     <td>@item.Category</td>
                     <td>@item.Author</td>
-                    <td>@item.CreatedAt.ToString("dd/MM/yyyy")</td>
+                    <td>@Model.GetFormattedDate(item.CreatedAt)</td>
                     <td>
                         <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
                         <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
@@ -82,16 +82,21 @@
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
                     data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
                         $('#refreshSpinner').removeClass('d-none');
+                        $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newTableBody = $html.find('#documentsList').html();
-                        $('#documentsList').html(newTableBody);
+                        // Replace table body content with partial view
+                        $('#documentsList').html(response);
+                        $('#documentsList').css('opacity', '1');
                         // No notification when searching
                     },
                     error: function () {
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi tìm kiếm', 'error');
                     },
                     complete: function () {
@@ -106,19 +111,26 @@
             });
 
             function loadDocuments() {
+                const query = $('#searchQuery').val();
                 $.ajax({
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
+                    data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
                         $('#refreshSpinner').removeClass('d-none');
+                        $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newTableBody = $html.find('#documentsList').html();
-                        $('#documentsList').html(newTableBody);
+                        // Replace table body content with partial view
+                        $('#documentsList').html(response);
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Đã làm mới danh sách', 'success');
                     },
                     error: function () {
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi làm mới', 'error');
                     },
                     complete: function () {
@@ -147,13 +159,11 @@
                         $('#loadingOverlay').show();
                     },
                     success: function (response) {
-                        $row.fadeOut(300, function () {
-                            $(this).remove();
-                        });
                         window.NotificationHub.showLocal('Đã xóa tài liệu: ' + title, 'success');
-
-                        // Send notification to all users via SignalR
-                        window.NotificationHub.sendNotification('Tài liệu "' + title + '" đã bị xóa');
+                        
+                        // Reload table immediately after delete
+                        // SignalR DocumentDeleted event will also trigger reload for other clients
+                        reloadDocumentsTable();
                     },
                     error: function (xhr) {
                         let errorMsg = 'Có lỗi khi xóa tài liệu';
@@ -168,7 +178,7 @@
                 });
             });
 
-            // Listen for document updates via SignalR and auto-update the table
+            // Listen for document updates via SignalR and auto-reload table
             if (window.NotificationHub && window.NotificationHub.connection) {
                 setupDocumentUpdateListener();
             } else {
@@ -184,40 +194,58 @@
 
                 const connection = window.NotificationHub.connection;
 
-                // Listen for document updates
+                // Listen for document updates - reload table via AJAX
                 connection.on('DocumentUpdated', function (data) {
                     console.log('Document updated:', data);
-                    updateDocumentRow(data);
+                    reloadDocumentsTable();
+                });
+
+                // Listen for document added - reload table via AJAX
+                connection.on('DocumentAdded', function (data) {
+                    console.log('Document added:', data);
+                    reloadDocumentsTable();
+                });
+
+                // Listen for document deleted - reload table via AJAX
+                connection.on('DocumentDeleted', function (data) {
+                    console.log('Document deleted:', data);
+                    reloadDocumentsTable();
                 });
             }
 
-            function updateDocumentRow(document) {
-                // Find the row for this document
-                const $row = $('tr[data-document-id="' + document.Id + '"]');
+            function reloadDocumentsTable() {
+                const query = $('#searchQuery').val();
                 
-                if ($row.length > 0) {
-                    // Update the row cells with new data
-                    $row.find('td:eq(0)').text(document.Title);
-                    $row.find('td:eq(1)').text(document.Category);
-                    $row.find('td:eq(2)').text(document.Author);
-                    $row.find('td:eq(3)').text(document.CreatedAt);
-
-                    // Add visual feedback - flash the row with animation
-                    $row.css({
-                        'background-color': '#d1e7dd',
-                        'transition': 'background-color 0.3s ease'
-                    });
-                    
-                    setTimeout(function () {
-                        $row.css({
-                            'background-color': '',
-                            'transition': 'background-color 1s ease'
+                $.ajax({
+                    url: '@Url.Action("Index", "Documents")',
+                    type: 'GET',
+                    data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    beforeSend: function () {
+                        $('#documentsList').css('opacity', '0.5');
+                    },
+                    success: function (response) {
+                        // Replace table body content
+                        $('#documentsList').html(response);
+                        
+                        // Add flash animation
+                        $('#documentsList').css({
+                            'opacity': '1',
+                            'background-color': '#d1e7dd',
+                            'transition': 'all 0.3s ease'
                         });
-                    }, 500);
-
-                    // Note: Global notification handler already shows a toast
-                    // No need for duplicate notification here
-                }
+                        
+                        setTimeout(function () {
+                            $('#documentsList').css('background-color', '');
+                        }, 1000);
+                    },
+                    error: function () {
+                        $('#documentsList').css('opacity', '1');
+                        console.error('Error reloading documents table');
+                    }
+                });
             }
         });
     </script>

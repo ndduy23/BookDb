@@ -4,6 +4,7 @@ using BookDb.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using BookDb.Hubs;
+using BookDb.Views.Documents;
 
 [Route("documents")]
 public class DocumentsController : Controller
@@ -22,12 +23,25 @@ public class DocumentsController : Controller
     public async Task<IActionResult> Index(string? q, int page = 1, int pageSize = 20)
     {
         var list = await _docService.GetDocumentsAsync(q, page, pageSize);
-        return View(list);
+        var viewModel = new IndexModel();
+        viewModel.Initialize(list, q);
+        
+        // Return partial view for AJAX requests
+        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            return PartialView("_DocumentsTablePartial", viewModel);
+        }
+        
+        return View(viewModel);
     }
 
     // GET /documents/create
     [HttpGet("create")]
-    public IActionResult Create() => View();
+    public IActionResult Create()
+    {
+        var viewModel = new CreateModel();
+        return View(viewModel);
+    }
 
     // POST /documents/create
     [HttpPost("create")]
@@ -65,32 +79,28 @@ public class DocumentsController : Controller
             }
         }
 
-        ViewBag.Mode = mode;
+        int totalPages = 0;
+        DocumentPage? currentPageEntity = null;
+        
         if (mode == "paged" && document.Pages.Any())
         {
             // Ensure page is within valid range
-            var total = document.Pages.Count;
+            totalPages = document.Pages.Count;
             if (page < 1) page = 1;
-            if (page > total) page = total;
+            if (page > totalPages) page = totalPages;
 
             var currentPage = document.Pages.OrderBy(p => p.PageNumber).Skip(page - 1).FirstOrDefault();
 
             // Reload the page entity via service to include related data (e.g., Bookmark)
             if (currentPage != null)
             {
-                var fullPage = await _docService.GetDocumentPageByIdAsync(currentPage.Id);
-                ViewBag.Page = fullPage;
+                currentPageEntity = await _docService.GetDocumentPageByIdAsync(currentPage.Id);
             }
-            else
-            {
-                ViewBag.Page = null;
-            }
-
-            ViewBag.CurrentPage = page;
-            ViewBag.TotalPages = total;
         }
 
-        return View(document);
+        var viewModel = new ViewDocumentModel();
+        viewModel.Initialize(document, mode, currentPageEntity, page, totalPages);
+        return View(viewModel);
     }
 
     // POST /documents/delete/{id}
@@ -108,7 +118,9 @@ public class DocumentsController : Controller
     {
         var doc = await _docService.GetDocumentByIdAsync(id);
         if (doc == null) return NotFound();
-        return View(doc);
+        var viewModel = new EditModel();
+        viewModel.Initialize(doc);
+        return View(viewModel);
     }
 
     // POST /documents/edit/{id}

@@ -1,4 +1,4 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Repositories.Interfaces;
 
 namespace BookDb.Repository.Interfaces
@@ -7,5 +7,6 @@ namespace BookDb.Repository.Interfaces
     {
         Task<DocumentPage?> GetByIdWithDocumentAsync(int id);
         Task<IEnumerable<DocumentPage>> GetPagesByDocumentIdAsync(int documentId);
+        Task<IEnumerable<DocumentPage>> GetPagesWithBookmarksAsync(int documentId);
     }
 }

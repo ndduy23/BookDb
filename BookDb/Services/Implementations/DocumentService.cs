@@ -1,4 +1,4 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
@@ -206,7 +206,7 @@ namespace BookDb.Services.Implementations
 
         public Task<Document?> GetDocumentByIdAsync(int id) => _docRepo.GetByIdAsync(id);
 
-        public Task<DocumentPage?> GetDocumentPageByIdAsync(int id) => _pageRepo.GetByIdAsync(id);
+        public Task<DocumentPage?> GetDocumentPageByIdAsync(int id) => _pageRepo.GetByIdWithDocumentAsync(id);
 
         public Task<List<Bookmark>> GetBookmarksAsync() => _bookmarkRepo.GetAllWithDetailsAsync();
 

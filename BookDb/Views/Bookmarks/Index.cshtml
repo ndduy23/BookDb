@@ -1,18 +1,20 @@
-﻿@model IEnumerable<BookDb.Models.Bookmark>
+@model IEnumerable<BookDb.Models.Bookmark>
 
 @{
     ViewData["Title"] = "Danh sách Bookmark";
 }
 
-<h2>Danh sách Bookmark</h2>
+<link rel="stylesheet" href="~/css/bookmark-signalr.css" />
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Danh sách Bookmark</h2>
+    <div class="signalr-status-inline">
+        <span class="realtime-indicator" id="realtimeIndicator"></span>
+        <small class="text-muted">Real-time</small>
+    </div>
+</div>
 
 <div class="row mb-3">
-    <div class="col-md-8">
-        <button type="button" class="btn btn-info" id="refreshBookmarks">
-            <span id="refreshSpinner" class="spinner-border spinner-border-sm d-none"></span>
-            Làm mới
-        </button>
-    </div>
     <div class="col-md-4">
         <form method="get" asp-action="Index" id="searchForm">
             <div class="input-group">
@@ -34,7 +36,7 @@
     }
     else
     {
-        <table class="table table-bordered table-striped">
+        <table class="table table-bordered table-striped bookmark-table">
             <thead>
                 <tr>
                     <th>Tài liệu</th>
@@ -91,6 +93,7 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/bookmark-signalr.js"></script>
     <script>
         $(document).ready(function () {
             // Ajax search with debounce
@@ -171,11 +174,6 @@
                         });
 
                         window.NotificationHub.showLocal('Đã xóa bookmark', 'success');
-
-                        // Notify other users
-                        if (window.NotificationHub) {
-                            window.NotificationHub.sendNotification(`Bookmark "${title}" đã bị xóa`);
-                        }
                     },
                     error: function (xhr) {
                         $row.css('opacity', '1');
@@ -188,23 +186,24 @@
                 });
             });
 
-            // Listen for bookmark changes via SignalR
-            if (window.signalR) {
-                const connection = new signalR.HubConnectionBuilder()
-                    .withUrl('/notify')
-                    .build();
-
-                connection.on('ReceiveNotification', function (message) {
-                    // If notification is about bookmarks, refresh the list
-                    if (message.toLowerCase().includes('bookmark')) {
-                        setTimeout(function () {
-                            const query = $('#searchQuery').val();
-                            loadBookmarks(query);
-                        }, 1000);
+            // Note: Bookmarks are personal, no SignalR broadcasting needed
+            // Just local notifications when user creates/deletes their own bookmarks
+            
+            // Update connection indicator if NotificationHub is available
+            if (window.NotificationHub && window.NotificationHub.connection) {
+                const connection = window.NotificationHub.connection;
+                
+                function updateRealtimeIndicator() {
+                    const indicator = $('#realtimeIndicator');
+                    if (connection && connection.state === signalR.HubConnectionState.Connected) {
+                        indicator.removeClass('disconnected');
+                    } else {
+                        indicator.addClass('disconnected');
                     }
-                });
+                }
 
-                connection.start().catch(err => console.error('SignalR error:', err));
+                setInterval(updateRealtimeIndicator, 2000);
+                updateRealtimeIndicator();
             }
         });
     </script>

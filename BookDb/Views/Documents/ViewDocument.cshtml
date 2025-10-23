@@ -1,4 +1,4 @@
-﻿@model BookDb.Models.Document
+@model BookDb.Models.Document
 
 @{
     ViewData["Title"] = "Xem tài liệu";
@@ -7,6 +7,30 @@
     int page = ViewBag.CurrentPage ?? 1;
     int totalPages = ViewBag.TotalPages ?? 0;
 }
+
+<style>
+    #addBookmarkBtn {
+        transition: all 0.3s ease;
+        min-width: 150px;
+    }
+    
+    #addBookmarkBtn:disabled {
+        cursor: not-allowed;
+    }
+    
+    .bookmark-success {
+        animation: bookmarkPulse 0.5s ease-out;
+    }
+    
+    @@keyframes bookmarkPulse {
+        0%, 100% {
+            transform: scale(1);
+        }
+        50% {
+            transform: scale(1.05);
+        }
+    }
+</style>
 
 <h2>@Model.Title</h2>
 <p>
@@ -59,13 +83,15 @@
 {
     if (Model.Pages != null && Model.Pages.Any())
     {
-        var currentPageDoc = Model.Pages
+        // Use the page from ViewBag which has Bookmark loaded
+        var currentPageDoc = currentPage ?? Model.Pages
             .OrderBy(p => p.PageNumber)
             .FirstOrDefault(p => p.PageNumber == page);
 
         if (currentPageDoc != null)
         {
             var iframeSrc = Url.Content(currentPageDoc.FilePath ?? "");
+            // Check bookmark from the loaded page entity (ViewBag.Page has Bookmark included)
             bool hasBookmark = currentPageDoc.Bookmark != null;
 
             // If the generated page is HTML (from Excel), show it directly. Otherwise (PDF) show inside an iframe as well.
@@ -87,14 +113,17 @@
 
             @if (hasBookmark)
             {
-                <button type="button" class="btn btn-warning" onclick="alert('Bookmark đã tồn tại trên trang này');">Đã có Bookmark</button>
+                <button type="button" class="btn btn-warning" onclick="window.NotificationHub.showLocal('⚠️ Bookmark đã tồn tại trên trang này', 'warning');">Đã có Bookmark</button>
             }
             else
             {
-                <form asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline" onsubmit="return showBookmarkMessage();">
+                <form id="bookmarkForm" asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="documentPageId" value="@(currentPageDoc.Id)" />
-                    <button type="submit" class="btn btn-primary">Thêm Bookmark</button>
+                    <button type="submit" class="btn btn-primary" id="addBookmarkBtn">
+                        <span class="spinner-border spinner-border-sm d-none" id="bookmarkSpinner"></span>
+                        Thêm Bookmark
+                    </button>
                 </form>
             }
 
@@ -197,15 +226,96 @@ else
 </script>
 
 <script>
-    function showBookmarkMessage() {
-        try {
-            alert("Đã lưu bookmark!");
-            return true; // cho phép submit form
-        } catch (e) {
-            alert("Có lỗi xảy ra!");
-            return false; // chặn submit nếu lỗi
+    // Handle bookmark form submission with AJAX
+    $(document).ready(function() {
+        $('#bookmarkForm').on('submit', function(e) {
+            e.preventDefault(); // Prevent default form submission
+            
+            const form = $(this);
+            const submitBtn = $('#addBookmarkBtn');
+            const spinner = $('#bookmarkSpinner');
+            
+            // Disable button and show spinner
+            submitBtn.prop('disabled', true);
+            spinner.removeClass('d-none');
+            
+            $.ajax({
+                url: form.attr('action'),
+                type: 'POST',
+                data: form.serialize(),
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        // Show success notification with custom styling
+                        window.NotificationHub.showLocal('✅ ' + response.message, 'success');
+                        
+                        // Add success animation to button
+                        submitBtn.addClass('bookmark-success');
+                        
+                        // Change button to indicate bookmark exists
+                        setTimeout(function() {
+                            submitBtn.removeClass('btn-primary bookmark-success').addClass('btn-warning');
+                            submitBtn.html('✓ Đã có Bookmark');
+                            submitBtn.prop('disabled', true);
+                        }, 500);
+                        
+                        // Optional: Reload page after a delay to show bookmark state
+                        setTimeout(function() {
+                            location.reload();
+                        }, 2000);
+                    } else {
+                        // Show error notification with appropriate icon
+                        if (response.message && (response.message.includes('tồn tại') || response.message.includes('đã có'))) {
+                            window.NotificationHub.showLocal('⚠️ ' + response.message, 'warning');
+                            
+                            // Change button appearance for existing bookmark
+                            submitBtn.removeClass('btn-primary').addClass('btn-warning');
+                            submitBtn.html('✓ Đã có Bookmark');
+                            submitBtn.prop('disabled', true);
+                        } else {
+                            window.NotificationHub.showLocal('❌ ' + response.message, 'error');
+                            
+                            // Re-enable button for other errors
+                            submitBtn.prop('disabled', false);
+                            spinner.addClass('d-none');
+                        }
+                    }
+                },
+                error: function(xhr) {
+                    // Show error notification
+                    let errorMessage = 'Có lỗi xảy ra khi lưu bookmark';
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        errorMessage = xhr.responseJSON.message;
+                    }
+                    window.NotificationHub.showLocal('❌ ' + errorMessage, 'error');
+                    
+                    // Re-enable button
+                    submitBtn.prop('disabled', false);
+                    spinner.addClass('d-none');
+                },
+                complete: function() {
+                    spinner.addClass('d-none');
+                }
+            });
+        });
+        
+        // Show TempData messages if exists
+        @if (TempData["SuccessMessage"] != null)
+        {
+            <text>
+            window.NotificationHub.showLocal('✅ @TempData["SuccessMessage"]', 'success');
+            </text>
         }
-    }
+        
+        @if (TempData["ErrorMessage"] != null)
+        {
+            <text>
+            window.NotificationHub.showLocal('❌ @TempData["ErrorMessage"]', 'error');
+            </text>
+        }
+    });
 </script>
 
 <p class="mt-3">

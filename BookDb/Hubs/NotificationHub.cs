@@ -56,6 +56,40 @@ namespace BookDb.Hubs
             });
         }
 
+        // Document editing notifications - for real-time collaboration
+        public async Task NotifyDocumentEditingStarted(int documentId, string documentTitle, string userName)
+        {
+            await Clients.Others.SendAsync("DocumentEditingStarted", new
+            {
+                DocumentId = documentId,
+                DocumentTitle = documentTitle,
+                UserName = userName,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        public async Task NotifyDocumentEditingEnded(int documentId, string userName)
+        {
+            await Clients.Others.SendAsync("DocumentEditingEnded", new
+            {
+                DocumentId = documentId,
+                UserName = userName,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
+        public async Task NotifyDocumentFieldChanged(int documentId, string fieldName, string newValue, string userName)
+        {
+            await Clients.Others.SendAsync("DocumentFieldChanged", new
+            {
+                DocumentId = documentId,
+                FieldName = fieldName,
+                NewValue = newValue,
+                UserName = userName,
+                Timestamp = DateTime.UtcNow
+            });
+        }
+
         private static string GetGroupName(int documentId) => $"doc-{documentId}";
     }
 }

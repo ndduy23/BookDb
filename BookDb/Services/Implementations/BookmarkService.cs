@@ -1,4 +1,4 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
@@ -9,13 +9,22 @@ namespace BookDb.Services.Implementations
     {
         private readonly IBookmarkRepository _bookmarkRepo;
         private readonly IDocumentPageRepository _pageRepo;
-        private readonly AppDbContext _context; 
+        private readonly AppDbContext _context;
+        private readonly INotificationService _notificationService;
+        private readonly ILogger<BookmarkService> _logger;
 
-        public BookmarkService(IBookmarkRepository bookmarkRepo, IDocumentPageRepository pageRepo, AppDbContext context)
+        public BookmarkService(
+            IBookmarkRepository bookmarkRepo, 
+            IDocumentPageRepository pageRepo, 
+            AppDbContext context,
+            INotificationService notificationService,
+            ILogger<BookmarkService> logger)
         {
             _bookmarkRepo = bookmarkRepo;
             _pageRepo = pageRepo;
             _context = context;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         public Task<List<Bookmark>> GetBookmarksAsync(string? q)
@@ -23,32 +32,36 @@ namespace BookDb.Services.Implementations
             return _bookmarkRepo.GetFilteredBookmarksAsync(q);
         }
 
-        public async Task<(bool Success, string? ErrorMessage)> CreateBookmarkAsync(int documentPageId, string? title, string url)
+        public async Task<(bool Success, string? ErrorMessage, int? BookmarkId)> CreateBookmarkAsync(int documentPageId, string? title, string url)
         {
             var page = await _pageRepo.GetByIdWithDocumentAsync(documentPageId);
             if (page == null)
             {
-                return (false, "Trang tài liệu không tồn tại.");
+                return (false, "Trang tài liệu không tồn tại.", null);
             }
 
             bool exists = await _bookmarkRepo.ExistsAsync(documentPageId);
             if (exists)
             {
-                return (false, "Bookmark cho trang này đã tồn tại.");
+                return (false, "Không lưu được vì đã có bookmark trên trang này.", null);
             }
 
+            var bookmarkTitle = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}";
             var bookmark = new Bookmark
             {
                 DocumentPageId = documentPageId,
                 Url = url,
-                Title = title ?? $"{page.Document?.Title} - Trang {page.PageNumber}",
+                Title = bookmarkTitle,
                 CreatedAt = DateTime.UtcNow
             };
 
             await _bookmarkRepo.AddAsync(bookmark);
             await _context.SaveChangesAsync();
 
-            return (true, null);
+            // Note: Bookmark notifications are local only (not broadcast to other users)
+            _logger.LogInformation("Bookmark created: {BookmarkTitle} (ID: {BookmarkId})", bookmarkTitle, bookmark.Id);
+
+            return (true, null, bookmark.Id);
         }
 
         public async Task<bool> DeleteBookmarkAsync(int id)
@@ -56,8 +69,14 @@ namespace BookDb.Services.Implementations
             var bookmark = await _bookmarkRepo.GetByIdAsync(id);
             if (bookmark == null) return false;
 
+            var bookmarkTitle = bookmark.Title ?? "Bookmark";
+
             _bookmarkRepo.Delete(bookmark);
             await _context.SaveChangesAsync();
+
+            // Note: Bookmark notifications are local only (not broadcast to other users)
+            _logger.LogInformation("Bookmark deleted: {BookmarkTitle} (ID: {BookmarkId})", bookmarkTitle, id);
+
             return true;
         }
 

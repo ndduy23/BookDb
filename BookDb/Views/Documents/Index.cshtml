@@ -1,4 +1,4 @@
-﻿@model IEnumerable<BookDb.Models.Document>
+@model IEnumerable<BookDb.Models.Document>
 
 @{
     ViewData["Title"] = "Danh sách tài liệu";
@@ -168,21 +168,8 @@
                 });
             });
 
-            // Listen for document notifications from other users
-            if (window.signalR) {
-                const connection = new signalR.HubConnectionBuilder()
-                    .withUrl('/notify')
-                    .build();
-
-                connection.on('ReceiveNotification', function (message) {
-                    // If message is about document changes, refresh the list
-                    if (message.includes('uploaded') || message.includes('deleted')) {
-                        setTimeout(loadDocuments, 1000);
-                    }
-                });
-
-                connection.start().catch(err => console.error(err));
-            }
+            // Note: Using global NotificationHub instead of creating new connection
+            // The global notification system already handles document notifications
         });
     </script>
 }

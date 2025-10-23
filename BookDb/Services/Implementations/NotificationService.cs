@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.SignalR;
 using BookDb.Hubs;
 
 namespace BookDb.Services.Implementations
@@ -56,32 +56,65 @@ namespace BookDb.Services.Implementations
 
         public async Task NotifyDocumentUploadedAsync(string documentTitle)
         {
-            var message = $"📄 Tài liệu mới đã được thêm: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"📄 Tài liệu mới đã được thêm: {documentTitle}";
+                
+                // Send global notification (will be received once by all users)
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Document uploaded notification sent: {DocumentTitle}", documentTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document uploaded notification");
+            }
         }
 
         public async Task NotifyDocumentDeletedAsync(string documentTitle)
         {
-            var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Document deleted notification sent: {DocumentTitle}", documentTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document deleted notification");
+            }
         }
 
         public async Task NotifyDocumentUpdatedAsync(string documentTitle)
         {
-            var message = $"✏️ Tài liệu đã được cập nhật: {documentTitle}";
-            await SendGlobalNotificationAsync(message);
+            try
+            {
+                var message = $"✏️ Tài liệu đã được cập nhật: {documentTitle}";
+                await SendGlobalNotificationAsync(message);
+                
+                _logger.LogInformation("Document updated notification sent: {DocumentTitle}", documentTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending document updated notification");
+            }
         }
 
+        // Note: Bookmark methods kept for backward compatibility but not used
+        // Bookmarks are personal and should not broadcast to other users
         public async Task NotifyBookmarkCreatedAsync(string documentTitle, int pageNumber)
         {
-            var message = $"🔖 Bookmark mới: {documentTitle} - Trang {pageNumber}";
-            await SendGlobalNotificationAsync(message);
+            // Deprecated: Bookmarks are personal, no notification sent
+            _logger.LogInformation("Bookmark created (no notification): {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
+            await Task.CompletedTask;
         }
 
         public async Task NotifyBookmarkDeletedAsync(string bookmarkTitle)
         {
-            var message = $"❌ Bookmark đã bị xóa: {bookmarkTitle}";
-            await SendGlobalNotificationAsync(message);
+            // Deprecated: Bookmarks are personal, no notification sent
+            _logger.LogInformation("Bookmark deleted (no notification): {BookmarkTitle}", bookmarkTitle);
+            await Task.CompletedTask;
         }
 
         public async Task NotifyPageEditedAsync(int documentId, int pageId)

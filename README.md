@@ -6,25 +6,75 @@ Hệ thống lưu trữ và đọc tài liệu online.
 
 ## 🚀 Tính năng chính
 
-- **Quản lý tài liệu**
-  - Lưu trữ thông tin: Tên/Tựa đề, Lĩnh vực, Người viết/Tác giả, Thời gian tạo, Thời gian chỉnh sửa.
-  - Hỗ trợ nhiều loại file: **Text (.txt), Excel (.xlsx), PDF (.pdf)**.
-  - Lưu nội dung tài liệu theo **từng trang** (mỗi trang là 1 file, hoặc sử dụng chức năng chia trang của loại file).
-  - Thao tác cơ bản: **CRUD** (Tạo, Xem, Sửa, Xóa).
-  - Thêm/Sửa/Xóa trang tài liệu.
-    
+1. Quản lý Tài liệu (Document Management)
 
-- **Hiển thị và tìm kiếm**
-  - Danh sách tài liệu (có phân trang).
-  - Tìm kiếm theo các trường thông tin (Tên, Tác giả, Lĩnh vực...).
+CRUD đầy đủ: Tạo, Xem, Sửa, Xóa tài liệu
+Thông tin lưu trữ: Tiêu đề, Lĩnh vực, Tác giả, Mô tả, Thời gian tạo/sửa
+Hỗ trợ đa dạng định dạng:
 
-- **Đọc tài liệu**
-  - Xem tài liệu theo từng trang.
-  - Trả về file tương ứng với trang muốn đọc.
+.pdf - Tự động chia thành từng trang
+.xlsx - Chuyển mỗi sheet thành trang HTML
+.txt - Chia theo 700 từ/trang
+.docx - Lưu trữ file gốc
 
-- **Bookmark**
-  - Lưu lại trang đang đọc.
-  - Hiển thị danh sách bookmark (có phân trang).
-  - Tìm kiếm bookmark theo tên tài liệu, lĩnh vực.
-  - Mở/đọc nhanh trang đã được bookmark.
+
+Upload file: Với progress bar, validation kích thước (max 50MB)
+
+2. Phân trang Tài liệu (Document Pages)
+
+Tự động chia tài liệu thành nhiều trang
+Xem theo 2 chế độ:
+
+Original Mode: Xem file gốc
+Paged Mode: Xem từng trang với điều hướng
+
+
+Chỉnh sửa nội dung từng trang
+Điều hướng trang (Previous, Next, Last page)
+
+3. Bookmark
+
+Đánh dấu trang đang đọc
+Mỗi trang chỉ có 1 bookmark (unique constraint)
+Quản lý danh sách bookmark
+Tìm kiếm bookmark theo tên tài liệu
+Truy cập nhanh đến trang đã bookmark
+Validation: Không cho phép tạo bookmark trùng
+
+4. Tìm kiếm & Lọc
+
+Tìm kiếm tài liệu theo: Tiêu đề, Tác giả, Lĩnh vực
+Tìm kiếm bookmark theo tên tài liệu
+AJAX search với debounce (500ms)
+Phân trang kết quả (20 items/page)
+
+5. SignalR Real-time Updates 
+Đây là điểm nổi bật của project:
+Notifications toàn cục:
+
+Thông báo khi có tài liệu mới
+Thông báo khi tài liệu bị xóa/sửa
+Thông báo khi có bookmark mới/xóa
+
+Auto-refresh:
+
+Danh sách tài liệu tự động reload khi có thay đổi
+Danh sách bookmark tự động reload
+Trang tài liệu tự động reload khi nội dung thay đổi
+
+Document Group Notifications:
+
+Người đang xem cùng tài liệu nhận thông báo real-time
+Thông báo khi trang được chỉnh sửa
+Collaboration awareness (ai đang edit tài liệu)
+
+Notification Panel:
+
+Hiển thị lịch sử thông báo
+Đánh dấu đã đọc/chưa đọc
+Connection status indicator
+Toast notifications với animations
+
+
+Code coverage cho các services chính
 

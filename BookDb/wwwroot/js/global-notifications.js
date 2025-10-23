@@ -89,7 +89,16 @@
                 this.showToast(message, 'warning');
             });
 
-            // Note: Bookmark events are removed - bookmarks are personal, not broadcast
+            // Handle bookmark changes
+            connection.on('BookmarkCreated', (data) => {
+                const message = `🔖 Bookmark mới: ${data.DocumentTitle || ''} - Trang ${data.PageNumber || ''}`;
+                this.showToast(message, 'success');
+            });
+
+            connection.on('BookmarkDeleted', (data) => {
+                const message = `🗑️ Bookmark đã bị xóa: ${data.Title || ''}`;
+                this.showToast(message, 'warning');
+            });
 
             // Connection state handlers
             connection.onreconnecting((error) => {

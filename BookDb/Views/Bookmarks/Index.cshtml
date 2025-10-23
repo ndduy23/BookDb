@@ -163,16 +163,11 @@
                         $row.css('opacity', '0.5');
                     },
                     success: function () {
-                        $row.fadeOut(300, function () {
-                            $(this).remove();
-
-                            // Check if no more bookmarks
-                            if ($('#bookmarksList tr').length === 0) {
-                                $('#bookmarksContainer').html('<div class="alert alert-info">Chưa có bookmark nào</div>');
-                            }
-                        });
-
                         window.NotificationHub.showLocal('Đã xóa bookmark', 'success');
+                        
+                        // Reload table immediately after delete
+                        // SignalR BookmarkDeleted event will also trigger reload for other clients
+                        loadBookmarks($('#searchQuery').val());
                     },
                     error: function (xhr) {
                         $row.css('opacity', '1');
@@ -185,13 +180,35 @@
                 });
             });
 
-            // Note: Bookmarks are personal, no SignalR broadcasting needed
-            // Just local notifications when user creates/deletes their own bookmarks
-            
-            // Update connection indicator if NotificationHub is available
+            // Listen for bookmark updates via SignalR and auto-reload table
             if (window.NotificationHub && window.NotificationHub.connection) {
+                setupBookmarkUpdateListener();
+            } else {
+                // Wait for NotificationHub to initialize
+                setTimeout(setupBookmarkUpdateListener, 1000);
+            }
+
+            function setupBookmarkUpdateListener() {
+                if (!window.NotificationHub || !window.NotificationHub.connection) {
+                    console.warn('NotificationHub not ready');
+                    return;
+                }
+
                 const connection = window.NotificationHub.connection;
+
+                // Listen for bookmark created - reload table via AJAX
+                connection.on('BookmarkCreated', function (data) {
+                    console.log('Bookmark created:', data);
+                    loadBookmarks($('#searchQuery').val());
+                });
+
+                // Listen for bookmark deleted - reload table via AJAX
+                connection.on('BookmarkDeleted', function (data) {
+                    console.log('Bookmark deleted:', data);
+                    loadBookmarks($('#searchQuery').val());
+                });
                 
+                // Update connection indicator
                 function updateRealtimeIndicator() {
                     const indicator = $('#realtimeIndicator');
                     if (connection && connection.state === signalR.HubConnectionState.Connected) {

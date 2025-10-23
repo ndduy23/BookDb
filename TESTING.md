@@ -23,7 +23,7 @@ Tests for `DocumentPageService` implementation
 - ✅ Get pages with bookmarks
 - ✅ Real-time notifications
 
-### 4. **Notification.Service.Test** ⭐ NEW
+### 4. **Notification.Service.Test** 
 Tests for `NotificationService` implementation
 - ✅ Global notifications
 - ✅ Document group notifications

@@ -1,10 +1,10 @@
-@model IEnumerable<BookDb.Models.Document>
+@model BookDb.Views.Documents.IndexModel
 
 @{
-    ViewData["Title"] = "Danh sách tài liệu";
+    ViewData["Title"] = Model.Title;
 }
 
-<h2>Danh sách tài liệu</h2>
+<h2>@Model.Title</h2>
 
 <div class="row mb-3">
     <div class="col-md-8">

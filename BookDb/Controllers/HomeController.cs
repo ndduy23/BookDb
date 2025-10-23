@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using BookDb.Models;
+using BookDb.Views.Home;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BookDb.Controllers

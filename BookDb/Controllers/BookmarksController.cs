@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using BookDb.Services.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using BookDb.Hubs;
+using BookDb.Views.Bookmarks;
+
 
 namespace BookDb.Controllers
 {

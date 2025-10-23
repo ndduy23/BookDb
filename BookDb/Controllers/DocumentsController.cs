@@ -1,16 +1,20 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Services.Implementations;
 using BookDb.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using BookDb.Hubs;
 
 [Route("documents")]
 public class DocumentsController : Controller
 {
     private readonly IDocumentService _docService;
+    private readonly IHubContext<NotificationHub> _hubContext;
 
-    public DocumentsController(IDocumentService docService)
+    public DocumentsController(IDocumentService docService, IHubContext<NotificationHub> hubContext)
     {
         _docService = docService;
+        _hubContext = hubContext;
     }
 
     // GET /documents
@@ -113,6 +117,23 @@ public class DocumentsController : Controller
     {
         var success = await _docService.UpdateDocumentAsync(id, file, title, category, author, description);
         if (!success) return NotFound();
+
+        // Get updated document to send full data via SignalR
+        var updatedDoc = await _docService.GetDocumentByIdAsync(id);
+        if (updatedDoc != null)
+        {
+            // Send detailed document update event for auto-refresh
+            await _hubContext.Clients.All.SendAsync("DocumentUpdated", new
+            {
+                Id = id,
+                Title = updatedDoc.Title,
+                Category = updatedDoc.Category,
+                Author = updatedDoc.Author,
+                CreatedAt = updatedDoc.CreatedAt.ToString("dd/MM/yyyy"),
+                UpdatedAt = updatedDoc.UpdatedAt.ToString("dd/MM/yyyy HH:mm")
+            });
+        }
+
         return RedirectToAction("Index");
     }
 

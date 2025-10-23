@@ -27,7 +27,9 @@ namespace BookDb.Controllers
         public async Task<IActionResult> Index(string? q)
         {
             var bookmarks = await _bookmarkService.GetBookmarksAsync(q);
-            return View(bookmarks);
+            var viewModel = new IndexModel();
+            viewModel.Initialize(bookmarks, q);
+            return View(viewModel);
         }
 
         // POST /bookmarks/create

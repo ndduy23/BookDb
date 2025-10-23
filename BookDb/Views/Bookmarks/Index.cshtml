@@ -1,7 +1,7 @@
-@model IEnumerable<BookDb.Models.Bookmark>
+@model BookDb.Views.Bookmarks.IndexModel
 
 @{
-    ViewData["Title"] = "Danh sách Bookmark";
+    ViewData["Title"] = Model.Title;
 }
 
 <link rel="stylesheet" href="~/css/bookmark-signalr.css" />
@@ -20,7 +20,7 @@
             <div class="input-group">
                 <input type="text" name="q" id="searchQuery" class="form-control"
                        placeholder="Tìm theo tên tài liệu..."
-                       value="@Context.Request.Query["q"]" />
+                       value="@Model.SearchQuery" />
                 <button type="submit" class="btn btn-info">Tìm</button>
             </div>
         </form>
@@ -28,10 +28,10 @@
 </div>
 
 <div id="bookmarksContainer">
-    @if (!Model.Any())
+    @if (!Model.HasBookmarks())
     {
         <div class="alert alert-info">
-            Chưa có bookmark nào. Hãy thêm bookmark khi xem tài liệu!
+            @Model.GetEmptyMessage()
         </div>
     }
     else
@@ -47,18 +47,18 @@
                 </tr>
             </thead>
             <tbody id="bookmarksList">
-                @foreach (var item in Model)
+                @foreach (var item in Model.Bookmarks)
                 {
                     <tr data-bookmark-id="@item.Id">
-                        <td>@item.DocumentPage?.Document?.Title</td>
-                        <td class="text-center">@item.DocumentPage?.PageNumber</td>
+                        <td>@Model.GetDocumentTitle(item)</td>
+                        <td class="text-center">@Model.GetPageNumber(item)</td>
                         <td>@item.Title</td>
-                        <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@Model.GetFormattedDateTime(item.CreatedAt)</td>
                         <td>
                             <a asp-controller="Documents" asp-action="ViewDocument"
-                               asp-route-id="@item.DocumentPage?.DocumentId"
+                               asp-route-id="@Model.GetDocumentId(item)"
                                asp-route-mode="paged"
-                               asp-route-page="@item.DocumentPage?.PageNumber"
+                               asp-route-page="@Model.GetPageNumber(item)"
                                class="btn btn-sm btn-success">Xem</a>
 
                             <button type="button" class="btn btn-sm btn-danger delete-bookmark-btn"

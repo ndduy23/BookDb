@@ -1,8 +1,8 @@
-﻿
+@model BookDb.Views.Home.IndexModel
+
 @{
-    ViewData["Title"] = "Home Page";
+    ViewData["Title"] = Model.Title;
 }
 <div class="text-center">
-    <h1 class="display-4">Welcome</h1>
+    <h1 class="display-4">@Model.GetWelcomeText()</h1>
 </div>
-

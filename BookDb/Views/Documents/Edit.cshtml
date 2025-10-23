@@ -1,7 +1,7 @@
-@model BookDb.Models.Document
+@model BookDb.Views.Documents.EditModel
 
 @{
-    ViewData["Title"] = "Sửa tài liệu";
+    ViewData["Title"] = Model.Title;
 }
 
 <style>
@@ -37,28 +37,28 @@
 
 <h2>Sửa tài liệu</h2>
 
-<form asp-action="Edit" asp-route-id="@Model.Id" enctype="multipart/form-data" method="post" id="editDocumentForm">
+<form asp-action="Edit" asp-route-id="@Model.GetDocumentId()" enctype="multipart/form-data" method="post" id="editDocumentForm">
     <div class="mb-3">
         <label class="form-label">Tiêu đề</label>
-        <input name="title" id="title" value="@Model.Title" class="form-control" required data-field-name="title" />
+        <input name="title" id="title" value="@Model.Document.Title" class="form-control" required data-field-name="title" />
     </div>
 
     <div class="mb-3">
         <label class="form-label">Lĩnh vực</label>
-        <input name="category" id="category" value="@Model.Category" class="form-control" data-field-name="category" />
+        <input name="category" id="category" value="@Model.Document.Category" class="form-control" data-field-name="category" />
     </div>
 
     <div class="mb-3">
         <label class="form-label">Tác giả</label>
-        <input name="author" id="author" value="@Model.Author" class="form-control" data-field-name="author" />
+        <input name="author" id="author" value="@Model.Document.Author" class="form-control" data-field-name="author" />
     </div>
 
     <div class="mb-3">
         <label class="form-label">File mới (nếu muốn thay thế)</label>
         <input type="file" name="file" class="form-control" />
-        @if (!string.IsNullOrEmpty(Model.FilePath))
+        @if (Model.HasFile())
         {
-            <p>File hiện tại: <a href="@Model.FilePath" target="_blank">📄 Xem file</a></p>
+            <p>File hiện tại: <a href="@Model.GetFileUrl()" target="_blank">📄 Xem file</a></p>
         }
     </div>
 
@@ -71,9 +71,9 @@
     <script>
         $(document).ready(function() {
             // Initialize real-time editing
-            const documentId = @Model.Id;
-            const documentTitle = '@(Model.Title?.Replace("'", "\\'") ?? "")';
-            const userName = 'User_' + Math.floor(Math.random() * 1000); // TODO: Get from authentication
+            const documentId = @Model.GetDocumentId();
+            const documentTitle = '@Model.GetSafeTitle()';
+            const userName = '@Model.GenerateUserName()'; // TODO: Get from authentication
             
             window.DocumentEditingRealtime.init(documentId, userName);
 

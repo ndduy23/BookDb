@@ -15,7 +15,8 @@ namespace BookDb.Controllers
 
         public IActionResult Index()
         {
-            return View();
+            var viewModel = new IndexModel();
+            return View(viewModel);
         }
 
         public IActionResult Privacy()

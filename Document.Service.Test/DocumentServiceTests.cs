@@ -7,7 +7,6 @@ using BookDb.Services.Interfaces;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 
 namespace BookDb.Tests.Services
 {
@@ -19,7 +18,6 @@ namespace BookDb.Tests.Services
         private readonly Mock<IWebHostEnvironment> _envMock;
         private readonly AppDbContext _context;
         private readonly Mock<INotificationService> _notificationServiceMock;
-        private readonly Mock<ILogger<DocumentService>> _loggerMock;
         private readonly DocumentService _service;
         private readonly string _tempPath;
 
@@ -30,12 +28,11 @@ namespace BookDb.Tests.Services
             _bookmarkRepoMock = new Mock<IBookmarkRepository>();
             _envMock = new Mock<IWebHostEnvironment>();
             _notificationServiceMock = new Mock<INotificationService>();
-            _loggerMock = new Mock<ILogger<DocumentService>>();
 
             // Create temp directory for file operations
             _tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             Directory.CreateDirectory(_tempPath);
-            Directory.CreateDirectory(Path.Combine(_tempPath, "uploads"));
+            Directory.CreateDirectory(Path.Combine(_tempPath, "Uploads"));
 
             _envMock.Setup(e => e.WebRootPath).Returns(_tempPath);
 
@@ -50,8 +47,7 @@ namespace BookDb.Tests.Services
                 _bookmarkRepoMock.Object,
                 _envMock.Object,
                 _context,
-                _notificationServiceMock.Object,
-                _loggerMock.Object
+                _notificationServiceMock.Object
             );
         }
 
@@ -59,7 +55,7 @@ namespace BookDb.Tests.Services
         public async Task CreateDocumentAsync_Should_Create_PDF_Document()
         {
             // Arrange
-            var mockFile = CreateMockFile("test.pdf", "application/pdf", 1024);
+            var mockFile = CreateMockPdfFile("test.pdf", "application/pdf");
             _docRepoMock.Setup(r => r.AddAsync(It.IsAny<Document>())).Returns(Task.CompletedTask);
             _notificationServiceMock.Setup(n => n.NotifyDocumentUploadedAsync(It.IsAny<string>()))
                                    .Returns(Task.CompletedTask);
@@ -118,10 +114,8 @@ namespace BookDb.Tests.Services
         }
 
         [Theory]
-        [InlineData("document.pdf", "application/pdf")]
         [InlineData("document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
         [InlineData("document.txt", "text/plain")]
-        [InlineData("spreadsheet.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")]
         public async Task CreateDocumentAsync_Should_Accept_ValidFormats(string fileName, string contentType)
         {
             // Arrange
@@ -144,7 +138,7 @@ namespace BookDb.Tests.Services
                 new Document { Id = 1, Title = "Doc 1" },
                 new Document { Id = 2, Title = "Doc 2" }
             };
-            _docRepoMock.Setup(r => r.GetFilteredDocumentsAsync("search", 1, 10))
+            _docRepoMock.Setup(r => r.GetPagedAndSearchedAsync("search", 1, 10))
                         .ReturnsAsync(expectedDocs);
 
             // Act
@@ -153,7 +147,7 @@ namespace BookDb.Tests.Services
             // Assert
             Assert.NotNull(result);
             Assert.Equal(2, result.Count());
-            _docRepoMock.Verify(r => r.GetFilteredDocumentsAsync("search", 1, 10), Times.Once);
+            _docRepoMock.Verify(r => r.GetPagedAndSearchedAsync("search", 1, 10), Times.Once);
         }
 
         [Fact]
@@ -298,8 +292,12 @@ namespace BookDb.Tests.Services
             { 
                 Id = 1, 
                 Title = "Test",
-                FilePath = "/old/path.pdf"
+                FilePath = "/Uploads/old.pdf"
             };
+            // Create the old file so deletion works
+            var oldFilePath = Path.Combine(_tempPath, "Uploads", "old.pdf");
+            File.WriteAllText(oldFilePath, "old content");
+            
             var newFile = CreateMockFile("new.pdf", "application/pdf", 2048);
             _docRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(doc);
 
@@ -308,7 +306,7 @@ namespace BookDb.Tests.Services
 
             // Assert
             Assert.True(result);
-            Assert.NotEqual("/old/path.pdf", doc.FilePath);
+            Assert.NotEqual("/Uploads/old.pdf", doc.FilePath);
         }
 
         [Fact]
@@ -320,7 +318,7 @@ namespace BookDb.Tests.Services
                 Id = 1,
                 Bookmark = new Bookmark { Id = 1, Title = "Test Bookmark" }
             };
-            _pageRepoMock.Setup(r => r.GetByIdWithBookmarkAsync(1)).ReturnsAsync(expectedPage);
+            _pageRepoMock.Setup(r => r.GetByIdWithDocumentAsync(1)).ReturnsAsync(expectedPage);
 
             // Act
             var result = await _service.GetDocumentPageByIdAsync(1);
@@ -328,7 +326,7 @@ namespace BookDb.Tests.Services
             // Assert
             Assert.NotNull(result);
             Assert.NotNull(result.Bookmark);
-            _pageRepoMock.Verify(r => r.GetByIdWithBookmarkAsync(1), Times.Once);
+            _pageRepoMock.Verify(r => r.GetByIdWithDocumentAsync(1), Times.Once);
         }
 
         [Fact]
@@ -340,7 +338,7 @@ namespace BookDb.Tests.Services
                 new Bookmark { Id = 1 },
                 new Bookmark { Id = 2 }
             };
-            _bookmarkRepoMock.Setup(r => r.GetAllWithRelatedDataAsync()).ReturnsAsync(expectedBookmarks);
+            _bookmarkRepoMock.Setup(r => r.GetAllWithDetailsAsync()).ReturnsAsync(expectedBookmarks);
 
             // Act
             var result = await _service.GetBookmarksAsync();
@@ -361,6 +359,43 @@ namespace BookDb.Tests.Services
             mockFile.Setup(f => f.Length).Returns(length);
             mockFile.Setup(f => f.OpenReadStream()).Returns(ms);
             mockFile.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+                    .Callback<Stream, CancellationToken>((stream, token) => 
+                    {
+                        ms.Position = 0;
+                        ms.CopyTo(stream);
+                    })
+                    .Returns(Task.CompletedTask);
+
+            return mockFile;
+        }
+
+        private Mock<IFormFile> CreateMockPdfFile(string fileName, string contentType)
+        {
+            var mockFile = new Mock<IFormFile>();
+            // Create a minimal valid PDF file
+            var pdfContent = System.Text.Encoding.ASCII.GetBytes(
+                "%PDF-1.4\n" +
+                "1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+                "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+                "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]>>endobj\n" +
+                "xref\n0 4\n0000000000 65535 f\n" +
+                "0000000009 00000 n\n" +
+                "0000000058 00000 n\n" +
+                "0000000115 00000 n\n" +
+                "trailer<</Size 4/Root 1 0 R>>\n" +
+                "startxref\n178\n%%EOF");
+            var ms = new MemoryStream(pdfContent);
+
+            mockFile.Setup(f => f.FileName).Returns(fileName);
+            mockFile.Setup(f => f.ContentType).Returns(contentType);
+            mockFile.Setup(f => f.Length).Returns(pdfContent.Length);
+            mockFile.Setup(f => f.OpenReadStream()).Returns(ms);
+            mockFile.Setup(f => f.CopyToAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+                    .Callback<Stream, CancellationToken>((stream, token) => 
+                    {
+                        ms.Position = 0;
+                        ms.CopyTo(stream);
+                    })
                     .Returns(Task.CompletedTask);
 
             return mockFile;

@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using BookDb.Models;
+using BookDb.Views.Home;
 using Microsoft.AspNetCore.Mvc;
 
 namespace BookDb.Controllers
@@ -15,7 +16,8 @@ namespace BookDb.Controllers
 
         public IActionResult Index()
         {
-            return View();
+            var viewModel = new IndexModel();
+            return View(viewModel);
         }
 
         public IActionResult Privacy()

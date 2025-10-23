@@ -58,7 +58,21 @@ namespace BookDb.Services.Implementations
             await _bookmarkRepo.AddAsync(bookmark);
             await _context.SaveChangesAsync();
 
-            // Note: Bookmark notifications are local only (not broadcast to other users)
+            // Send notification via SignalR
+            if (_notificationService != null)
+            {
+                try
+                {
+                    await _notificationService.NotifyBookmarkCreatedAsync(
+                        page.Document?.Title ?? "Tài liệu", 
+                        page.PageNumber);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send bookmark created notification");
+                }
+            }
+
             _logger.LogInformation("Bookmark created: {BookmarkTitle} (ID: {BookmarkId})", bookmarkTitle, bookmark.Id);
 
             return (true, null, bookmark.Id);
@@ -74,7 +88,19 @@ namespace BookDb.Services.Implementations
             _bookmarkRepo.Delete(bookmark);
             await _context.SaveChangesAsync();
 
-            // Note: Bookmark notifications are local only (not broadcast to other users)
+            // Send notification via SignalR
+            if (_notificationService != null)
+            {
+                try
+                {
+                    await _notificationService.NotifyBookmarkDeletedAsync(bookmarkTitle);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to send bookmark deleted notification");
+                }
+            }
+
             _logger.LogInformation("Bookmark deleted: {BookmarkTitle} (ID: {BookmarkId})", bookmarkTitle, id);
 
             return true;

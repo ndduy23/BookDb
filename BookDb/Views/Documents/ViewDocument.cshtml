@@ -1,11 +1,7 @@
-@model BookDb.Models.Document
+@model BookDb.Views.Documents.ViewDocumentModel
 
 @{
-    ViewData["Title"] = "Xem tài liệu";
-    string mode = ViewBag.Mode ?? "original";
-    var currentPage = ViewBag.Page as BookDb.Models.DocumentPage;
-    int page = ViewBag.CurrentPage ?? 1;
-    int totalPages = ViewBag.TotalPages ?? 0;
+    ViewData["Title"] = Model.Title;
 }
 
 <style>
@@ -32,46 +28,45 @@
     }
 </style>
 
-<h2>@Model.Title</h2>
+<h2>@Model.GetDocumentTitle()</h2>
 <p>
-    <b>Tác giả:</b> @Model.Author <br />
-    <b>Lĩnh vực:</b> @Model.Category <br />
-    <b>Ngày tạo:</b> @Model.CreatedAt.ToString("dd/MM/yyyy") <br />
-    <b>Mô tả:</b> @Model.Description
+    <b>Tác giả:</b> @Model.GetDocumentAuthor() <br />
+    <b>Lĩnh vực:</b> @Model.GetDocumentCategory() <br />
+    <b>Ngày tạo:</b> @Model.GetFormattedDate() <br />
+    <b>Mô tả:</b> @Model.GetDocumentDescription()
 </p>
 
 <!-- Nút chuyển đổi giữa bản gốc và bản phân trang -->
 <div class="mb-3 d-flex align-items-center">
-    @if (mode == "paged")
+    @if (Model.IsPagedMode())
     {
-        <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="original" class="btn btn-info">
+        <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="original" class="btn btn-info">
             Xem bản gốc
         </a>
     }
     else
     {
-        <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" class="btn btn-info">
+        <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" class="btn btn-info">
             Xem bản phân trang
         </a>
     }
 
     @* Page controls placed next to the mode switch *@
-    @if (mode == "paged" && Model.Pages != null && Model.Pages.Any() && totalPages > 0)
+    @if (Model.IsPagedMode() && Model.HasPages() && Model.TotalPages > 0)
     {
-        var topPageInfo = $"Trang {page} / {totalPages}";
         <div class="ms-3">
             <div class="btn-group" role="group" aria-label="Trang">
-                @if (page > 1)
+                @if (Model.HasPreviousPage())
                 {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page - 1)" class="btn btn-secondary">←</a>
+                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.GetPreviousPageNumber()" class="btn btn-secondary">←</a>
                 }
 
-                <a class="btn btn-light disabled">@topPageInfo</a>
+                <a class="btn btn-light disabled">@Model.GetPageInfo()</a>
 
-                @if (page < totalPages)
+                @if (Model.HasNextPage())
                 {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(page + 1)" class="btn btn-secondary">→</a>
-                    <a asp-action="ViewDocument" asp-route-id="@Model.Id" asp-route-mode="paged" asp-route-page="@(totalPages)" class="btn btn-secondary">Trang cuối »</a>
+                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.GetNextPageNumber()" class="btn btn-secondary">→</a>
+                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.TotalPages" class="btn btn-secondary">Trang cuối »</a>
                 }
             </div>
         </div>
@@ -79,23 +74,18 @@
 </div>
 
 <!-- Hiển thị PDF và HTML (Excel) -->
-@if (mode == "paged")
+@if (Model.IsPagedMode())
 {
-    if (Model.Pages != null && Model.Pages.Any())
+    if (Model.HasPages())
     {
-        // Use the page from ViewBag which has Bookmark loaded
-        var currentPageDoc = currentPage ?? Model.Pages
-            .OrderBy(p => p.PageNumber)
-            .FirstOrDefault(p => p.PageNumber == page);
+        var currentPageDoc = Model.GetCurrentPageDocument();
 
         if (currentPageDoc != null)
         {
-            var iframeSrc = Url.Content(currentPageDoc.FilePath ?? "");
-            // Check bookmark from the loaded page entity (ViewBag.Page has Bookmark included)
-            bool hasBookmark = currentPageDoc.Bookmark != null;
+            var iframeSrc = Url.Content(Model.GetIFrameSource());
 
             // If the generated page is HTML (from Excel), show it directly. Otherwise (PDF) show inside an iframe as well.
-            if (!string.IsNullOrEmpty(currentPageDoc.ContentType) && currentPageDoc.ContentType.Contains("text/html"))
+            if (Model.IsHtmlContent())
             {
                 <iframe id="docFrame" src="@iframeSrc" width="80%" height="1000px" style="border:1px solid #ccc"></iframe>
             }
@@ -105,13 +95,12 @@
             }
 
             <!-- Hiển thị thông tin trang hiện tại / tổng trang -->
-            @if (totalPages > 0)
+            @if (Model.TotalPages > 0)
             {
-                var pageInfo = $"Trang {page} / {totalPages}";
-                <div class="mt-2">@pageInfo</div>
+                <div class="mt-2">@Model.GetPageInfo()</div>
             }
 
-            @if (hasBookmark)
+            @if (Model.CurrentPageHasBookmark())
             {
                 <button type="button" class="btn btn-warning" onclick="window.NotificationHub.showLocal('⚠️ Bookmark đã tồn tại trên trang này', 'warning');">Đã có Bookmark</button>
             }
@@ -119,7 +108,7 @@
             {
                 <form id="bookmarkForm" asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline">
                     @Html.AntiForgeryToken()
-                    <input type="hidden" name="documentPageId" value="@(currentPageDoc.Id)" />
+                    <input type="hidden" name="documentPageId" value="@currentPageDoc.Id" />
                     <button type="submit" class="btn btn-primary" id="addBookmarkBtn">
                         <span class="spinner-border spinner-border-sm d-none" id="bookmarkSpinner"></span>
                         Thêm Bookmark
@@ -140,9 +129,9 @@
 }
 else
 {
-    if (!string.IsNullOrEmpty(Model.FilePath))
+    if (Model.HasFile())
     {
-        <iframe id="docFrame" src="@Url.Content(Model.FilePath)" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
+        <iframe id="docFrame" src="@Url.Content(Model.GetFilePath())" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
     }
     else
     {
@@ -154,10 +143,10 @@ else
 <script src="/js/document-notify.js"></script>
 <script>
     (function () {
-        var docId = @Model.Id;
-        var currentPageId = @((currentPage != null) ? currentPage.Id : 0);
-        var currentPageNumber = page;
-        var mode = '@mode';
+        var docId = @Model.GetDocumentId();
+        var currentPageId = @Model.GetCurrentPageId();
+        var currentPageNumber = @Model.Page;
+        var mode = '@Model.Mode';
 
         function onPageChanged(payload, action) {
             try {
@@ -191,7 +180,7 @@ else
                     if (payload && payload.PageId && payload.PageId === currentPageId) {
                         // Current page was deleted, redirect to first page or document list
                         alert('Trang hiện tại đã bị xóa. Chuyển về trang đầu.');
-                        window.location.href = '/documents/view/@Model.Id?mode=paged&page=1';
+                        window.location.href = '/documents/view/@Model.GetDocumentId()?mode=paged&page=1';
                     } else if (payload && payload.PageNumber && payload.PageNumber === currentPageNumber) {
                         setTimeout(function() {
                             location.reload();

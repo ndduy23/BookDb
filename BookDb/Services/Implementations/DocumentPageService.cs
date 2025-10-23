@@ -1,12 +1,11 @@
-﻿using BookDb.Models;
+using BookDb.Models;
 using BookDb.Repositories.Interfaces;
 using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.SignalR;
-using BookDb.Hubs;
+using Microsoft.Extensions.Logging;
 
 namespace BookDb.Services.Implementations
 {
@@ -14,13 +13,19 @@ namespace BookDb.Services.Implementations
     {
         private readonly IDocumentPageRepository _pageRepo;
         private readonly AppDbContext _context; 
-        private readonly IHubContext<NotificationHub>? _hubContext;
+        private readonly INotificationService? _notificationService;
+        private readonly ILogger<DocumentPageService>? _logger;
 
-        public DocumentPageService(IDocumentPageRepository pageRepo, AppDbContext context, IHubContext<NotificationHub>? hubContext = null)
+        public DocumentPageService(
+            IDocumentPageRepository pageRepo, 
+            AppDbContext context, 
+            INotificationService? notificationService = null,
+            ILogger<DocumentPageService>? logger = null)
         {
             _pageRepo = pageRepo;
             _context = context;
-            _hubContext = hubContext;
+            _notificationService = notificationService;
+            _logger = logger;
         }
 
         public Task<DocumentPage?> GetPageByIdAsync(int id)
@@ -43,23 +48,46 @@ namespace BookDb.Services.Implementations
             }
 
             pageToUpdate.TextContent = newTextContent;
+            pageToUpdate.UpdatedAt = DateTime.UtcNow;
 
             _pageRepo.Update(pageToUpdate);
             await _context.SaveChangesAsync();
 
             // Notify viewers of the document that a page was updated
-            try
+            if (_notificationService != null && pageToUpdate.DocumentId > 0)
             {
-                if (_hubContext != null && pageToUpdate.DocumentId > 0)
+                try
                 {
-                    var groupName = $"doc-{pageToUpdate.DocumentId}";
-                    await _hubContext.Clients.Group(groupName).SendAsync("PageChanged", new { PageId = pageToUpdate.Id, DocumentId = pageToUpdate.DocumentId });
+                    await _notificationService.NotifyPageEditedAsync(pageToUpdate.DocumentId, pageToUpdate.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogWarning(ex, "Failed to send page edited notification");
                 }
             }
-            catch
+        }
+
+        public async Task CreatePageAsync(DocumentPage page)
+        {
+            await _pageRepo.AddAsync(page);
+            await _context.SaveChangesAsync();
+        }
+
+        public async Task DeletePageAsync(int id)
+        {
+            var page = await _pageRepo.GetByIdAsync(id);
+            if (page == null)
             {
-                // ignore hub notify errors
+                throw new KeyNotFoundException("Không tìm thấy trang tài liệu.");
             }
+
+            _pageRepo.Delete(page);
+            await _context.SaveChangesAsync();
+        }
+
+        public Task<IEnumerable<DocumentPage>> GetPagesWithBookmarksAsync(int documentId)
+        {
+            return _pageRepo.GetPagesWithBookmarksAsync(documentId);
         }
     }
 }

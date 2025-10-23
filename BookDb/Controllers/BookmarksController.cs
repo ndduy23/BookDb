@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using BookDb.Services.Interfaces;
 using Microsoft.AspNetCore.SignalR;
 using BookDb.Hubs;
+using BookDb.Views.Bookmarks;
+
 
 namespace BookDb.Controllers
 {
@@ -27,7 +29,16 @@ namespace BookDb.Controllers
         public async Task<IActionResult> Index(string? q)
         {
             var bookmarks = await _bookmarkService.GetBookmarksAsync(q);
-            return View(bookmarks);
+            var viewModel = new IndexModel();
+            viewModel.Initialize(bookmarks, q);
+            
+            // Return partial view for AJAX requests
+            if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                return PartialView("_BookmarksTablePartial", viewModel);
+            }
+            
+            return View(viewModel);
         }
 
         // POST /bookmarks/create

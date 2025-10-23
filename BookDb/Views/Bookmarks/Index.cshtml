@@ -1,7 +1,7 @@
-@model IEnumerable<BookDb.Models.Bookmark>
+@model BookDb.Views.Bookmarks.IndexModel
 
 @{
-    ViewData["Title"] = "Danh sách Bookmark";
+    ViewData["Title"] = Model.Title;
 }
 
 <link rel="stylesheet" href="~/css/bookmark-signalr.css" />
@@ -20,7 +20,7 @@
             <div class="input-group">
                 <input type="text" name="q" id="searchQuery" class="form-control"
                        placeholder="Tìm theo tên tài liệu..."
-                       value="@Context.Request.Query["q"]" />
+                       value="@Model.SearchQuery" />
                 <button type="submit" class="btn btn-info">Tìm</button>
             </div>
         </form>
@@ -28,10 +28,10 @@
 </div>
 
 <div id="bookmarksContainer">
-    @if (!Model.Any())
+    @if (!Model.HasBookmarks())
     {
         <div class="alert alert-info">
-            Chưa có bookmark nào. Hãy thêm bookmark khi xem tài liệu!
+            @Model.GetEmptyMessage()
         </div>
     }
     else
@@ -47,18 +47,18 @@
                 </tr>
             </thead>
             <tbody id="bookmarksList">
-                @foreach (var item in Model)
+                @foreach (var item in Model.Bookmarks)
                 {
                     <tr data-bookmark-id="@item.Id">
-                        <td>@item.DocumentPage?.Document?.Title</td>
-                        <td class="text-center">@item.DocumentPage?.PageNumber</td>
+                        <td>@Model.GetDocumentTitle(item)</td>
+                        <td class="text-center">@Model.GetPageNumber(item)</td>
                         <td>@item.Title</td>
-                        <td>@item.CreatedAt.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@Model.GetFormattedDateTime(item.CreatedAt)</td>
                         <td>
                             <a asp-controller="Documents" asp-action="ViewDocument"
-                               asp-route-id="@item.DocumentPage?.DocumentId"
+                               asp-route-id="@Model.GetDocumentId(item)"
                                asp-route-mode="paged"
-                               asp-route-page="@item.DocumentPage?.PageNumber"
+                               asp-route-page="@Model.GetPageNumber(item)"
                                class="btn btn-sm btn-success">Xem</a>
 
                             <button type="button" class="btn btn-sm btn-danger delete-bookmark-btn"
@@ -110,36 +110,35 @@
                 loadBookmarks(query);
             }
 
-            // Refresh bookmarks
-            $('#refreshBookmarks').on('click', function () {
-                const query = $('#searchQuery').val();
-                loadBookmarks(query);
-            });
-
             function loadBookmarks(query = '') {
                 $.ajax({
                     url: '@Url.Action("Index", "Bookmarks")',
                     type: 'GET',
                     data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
-                        $('#refreshSpinner').removeClass('d-none');
+                        $('#bookmarksList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newContent = $html.find('#bookmarksList').html();
-
-                        if (newContent) {
-                            $('#bookmarksList').html(newContent);
-                            window.NotificationHub.showLocal('Đã cập nhật danh sách', 'success');
-                        } else {
-                            $('#bookmarksContainer').html('<div class="alert alert-info">Không tìm thấy bookmark nào</div>');
-                        }
+                        // Replace table body content with partial view
+                        $('#bookmarksList').html(response);
+                        
+                        // Add flash animation
+                        $('#bookmarksList').css({
+                            'opacity': '1',
+                            'background-color': '#d1e7dd',
+                            'transition': 'all 0.3s ease'
+                        });
+                        
+                        setTimeout(function () {
+                            $('#bookmarksList').css('background-color', '');
+                        }, 1000);
                     },
                     error: function () {
+                        $('#bookmarksList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi tải danh sách', 'error');
-                    },
-                    complete: function () {
-                        $('#refreshSpinner').addClass('d-none');
                     }
                 });
             }
@@ -164,16 +163,11 @@
                         $row.css('opacity', '0.5');
                     },
                     success: function () {
-                        $row.fadeOut(300, function () {
-                            $(this).remove();
-
-                            // Check if no more bookmarks
-                            if ($('#bookmarksList tr').length === 0) {
-                                $('#bookmarksContainer').html('<div class="alert alert-info">Chưa có bookmark nào</div>');
-                            }
-                        });
-
                         window.NotificationHub.showLocal('Đã xóa bookmark', 'success');
+                        
+                        // Reload table immediately after delete
+                        // SignalR BookmarkDeleted event will also trigger reload for other clients
+                        loadBookmarks($('#searchQuery').val());
                     },
                     error: function (xhr) {
                         $row.css('opacity', '1');
@@ -186,13 +180,35 @@
                 });
             });
 
-            // Note: Bookmarks are personal, no SignalR broadcasting needed
-            // Just local notifications when user creates/deletes their own bookmarks
-            
-            // Update connection indicator if NotificationHub is available
+            // Listen for bookmark updates via SignalR and auto-reload table
             if (window.NotificationHub && window.NotificationHub.connection) {
+                setupBookmarkUpdateListener();
+            } else {
+                // Wait for NotificationHub to initialize
+                setTimeout(setupBookmarkUpdateListener, 1000);
+            }
+
+            function setupBookmarkUpdateListener() {
+                if (!window.NotificationHub || !window.NotificationHub.connection) {
+                    console.warn('NotificationHub not ready');
+                    return;
+                }
+
                 const connection = window.NotificationHub.connection;
+
+                // Listen for bookmark created - reload table via AJAX
+                connection.on('BookmarkCreated', function (data) {
+                    console.log('Bookmark created:', data);
+                    loadBookmarks($('#searchQuery').val());
+                });
+
+                // Listen for bookmark deleted - reload table via AJAX
+                connection.on('BookmarkDeleted', function (data) {
+                    console.log('Bookmark deleted:', data);
+                    loadBookmarks($('#searchQuery').val());
+                });
                 
+                // Update connection indicator
                 function updateRealtimeIndicator() {
                     const indicator = $('#realtimeIndicator');
                     if (connection && connection.state === signalR.HubConnectionState.Connected) {

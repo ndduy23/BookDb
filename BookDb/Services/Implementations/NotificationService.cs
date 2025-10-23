@@ -63,6 +63,9 @@ namespace BookDb.Services.Implementations
                 // Send global notification (will be received once by all users)
                 await SendGlobalNotificationAsync(message);
                 
+                // Send structured DocumentAdded event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("DocumentAdded", new { Title = documentTitle });
+                
                 _logger.LogInformation("Document uploaded notification sent: {DocumentTitle}", documentTitle);
             }
             catch (Exception ex)
@@ -76,7 +79,12 @@ namespace BookDb.Services.Implementations
             try
             {
                 var message = $"🗑️ Tài liệu đã bị xóa: {documentTitle}";
+                
+                // Send both text notification and structured event
                 await SendGlobalNotificationAsync(message);
+                
+                // Send structured DocumentDeleted event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("DocumentDeleted", new { Title = documentTitle });
                 
                 _logger.LogInformation("Document deleted notification sent: {DocumentTitle}", documentTitle);
             }
@@ -101,20 +109,51 @@ namespace BookDb.Services.Implementations
             }
         }
 
-        // Note: Bookmark methods kept for backward compatibility but not used
-        // Bookmarks are personal and should not broadcast to other users
         public async Task NotifyBookmarkCreatedAsync(string documentTitle, int pageNumber)
         {
-            // Deprecated: Bookmarks are personal, no notification sent
-            _logger.LogInformation("Bookmark created (no notification): {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
-            await Task.CompletedTask;
+            try
+            {
+                var message = $"🔖 Bookmark mới: {documentTitle} - Trang {pageNumber}";
+                
+                // Send global notification
+                await SendGlobalNotificationAsync(message);
+                
+                // Send structured BookmarkCreated event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("BookmarkCreated", new 
+                { 
+                    DocumentTitle = documentTitle, 
+                    PageNumber = pageNumber 
+                });
+                
+                _logger.LogInformation("Bookmark created notification sent: {DocumentTitle} - Page {PageNumber}", documentTitle, pageNumber);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark created notification");
+            }
         }
 
         public async Task NotifyBookmarkDeletedAsync(string bookmarkTitle)
         {
-            // Deprecated: Bookmarks are personal, no notification sent
-            _logger.LogInformation("Bookmark deleted (no notification): {BookmarkTitle}", bookmarkTitle);
-            await Task.CompletedTask;
+            try
+            {
+                var message = $"🗑️ Bookmark đã bị xóa: {bookmarkTitle}";
+                
+                // Send global notification
+                await SendGlobalNotificationAsync(message);
+                
+                // Send structured BookmarkDeleted event for AJAX table reload
+                await _hubContext.Clients.All.SendAsync("BookmarkDeleted", new 
+                { 
+                    Title = bookmarkTitle 
+                });
+                
+                _logger.LogInformation("Bookmark deleted notification sent: {BookmarkTitle}", bookmarkTitle);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending bookmark deleted notification");
+            }
         }
 
         public async Task NotifyPageEditedAsync(int documentId, int pageId)

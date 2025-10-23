@@ -48,7 +48,6 @@ namespace BookDb.Services.Implementations
             }
 
             pageToUpdate.TextContent = newTextContent;
-            pageToUpdate.UpdatedAt = DateTime.UtcNow;
 
             _pageRepo.Update(pageToUpdate);
             await _context.SaveChangesAsync();

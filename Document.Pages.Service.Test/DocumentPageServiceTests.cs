@@ -1,5 +1,6 @@
 using BookDb.Models;
 using BookDb.Repositories.Interfaces;
+using BookDb.Repository.Interfaces;
 using BookDb.Services.Implementations;
 using BookDb.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
@@ -195,27 +196,6 @@ namespace BookDb.Tests.Services
 
             // Assert
             Assert.Equal(content, page.TextContent);
-        }
-
-        [Fact]
-        public async Task UpdatePageAsync_Should_Update_LastModified()
-        {
-            // Arrange
-            var originalDate = DateTime.UtcNow.AddDays(-1);
-            var page = new DocumentPage 
-            { 
-                Id = 1, 
-                DocumentId = 5,
-                TextContent = "Old",
-                UpdatedAt = originalDate
-            };
-            _pageRepoMock.Setup(r => r.GetByIdAsync(1)).ReturnsAsync(page);
-
-            // Act
-            await _service.UpdatePageAsync(1, "New");
-
-            // Assert
-            Assert.True(page.UpdatedAt > originalDate);
         }
 
         [Fact]

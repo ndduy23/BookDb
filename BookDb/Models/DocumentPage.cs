@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace BookDb.Models
@@ -21,6 +21,10 @@ namespace BookDb.Models
         [MaxLength(100)]
         public string? ContentType { get; set; }
         public Bookmark? Bookmark { get; set; }
+
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 
     }
 }

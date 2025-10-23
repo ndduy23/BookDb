@@ -25,6 +25,13 @@ public class DocumentsController : Controller
         var list = await _docService.GetDocumentsAsync(q, page, pageSize);
         var viewModel = new IndexModel();
         viewModel.Initialize(list, q);
+        
+        // Return partial view for AJAX requests
+        if (Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            return PartialView("_DocumentsTablePartial", viewModel);
+        }
+        
         return View(viewModel);
     }
 

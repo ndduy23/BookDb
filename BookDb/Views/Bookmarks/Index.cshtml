@@ -110,36 +110,35 @@
                 loadBookmarks(query);
             }
 
-            // Refresh bookmarks
-            $('#refreshBookmarks').on('click', function () {
-                const query = $('#searchQuery').val();
-                loadBookmarks(query);
-            });
-
             function loadBookmarks(query = '') {
                 $.ajax({
                     url: '@Url.Action("Index", "Bookmarks")',
                     type: 'GET',
                     data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
-                        $('#refreshSpinner').removeClass('d-none');
+                        $('#bookmarksList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newContent = $html.find('#bookmarksList').html();
-
-                        if (newContent) {
-                            $('#bookmarksList').html(newContent);
-                            window.NotificationHub.showLocal('Đã cập nhật danh sách', 'success');
-                        } else {
-                            $('#bookmarksContainer').html('<div class="alert alert-info">Không tìm thấy bookmark nào</div>');
-                        }
+                        // Replace table body content with partial view
+                        $('#bookmarksList').html(response);
+                        
+                        // Add flash animation
+                        $('#bookmarksList').css({
+                            'opacity': '1',
+                            'background-color': '#d1e7dd',
+                            'transition': 'all 0.3s ease'
+                        });
+                        
+                        setTimeout(function () {
+                            $('#bookmarksList').css('background-color', '');
+                        }, 1000);
                     },
                     error: function () {
+                        $('#bookmarksList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi tải danh sách', 'error');
-                    },
-                    complete: function () {
-                        $('#refreshSpinner').addClass('d-none');
                     }
                 });
             }

@@ -82,16 +82,21 @@
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
                     data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
                         $('#refreshSpinner').removeClass('d-none');
+                        $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newTableBody = $html.find('#documentsList').html();
-                        $('#documentsList').html(newTableBody);
+                        // Replace table body content with partial view
+                        $('#documentsList').html(response);
+                        $('#documentsList').css('opacity', '1');
                         // No notification when searching
                     },
                     error: function () {
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi tìm kiếm', 'error');
                     },
                     complete: function () {
@@ -106,19 +111,26 @@
             });
 
             function loadDocuments() {
+                const query = $('#searchQuery').val();
                 $.ajax({
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
+                    data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
                     beforeSend: function () {
                         $('#refreshSpinner').removeClass('d-none');
+                        $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        const $html = $(response);
-                        const newTableBody = $html.find('#documentsList').html();
-                        $('#documentsList').html(newTableBody);
+                        // Replace table body content with partial view
+                        $('#documentsList').html(response);
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Đã làm mới danh sách', 'success');
                     },
                     error: function () {
+                        $('#documentsList').css('opacity', '1');
                         window.NotificationHub.showLocal('Có lỗi khi làm mới', 'error');
                     },
                     complete: function () {
@@ -168,7 +180,7 @@
                 });
             });
 
-            // Listen for document updates via SignalR and auto-update the table
+            // Listen for document updates via SignalR and auto-reload table
             if (window.NotificationHub && window.NotificationHub.connection) {
                 setupDocumentUpdateListener();
             } else {
@@ -184,40 +196,58 @@
 
                 const connection = window.NotificationHub.connection;
 
-                // Listen for document updates
+                // Listen for document updates - reload table via AJAX
                 connection.on('DocumentUpdated', function (data) {
                     console.log('Document updated:', data);
-                    updateDocumentRow(data);
+                    reloadDocumentsTable();
+                });
+
+                // Listen for document added - reload table via AJAX
+                connection.on('DocumentAdded', function (data) {
+                    console.log('Document added:', data);
+                    reloadDocumentsTable();
+                });
+
+                // Listen for document deleted - reload table via AJAX
+                connection.on('DocumentDeleted', function (data) {
+                    console.log('Document deleted:', data);
+                    reloadDocumentsTable();
                 });
             }
 
-            function updateDocumentRow(document) {
-                // Find the row for this document
-                const $row = $('tr[data-document-id="' + document.Id + '"]');
+            function reloadDocumentsTable() {
+                const query = $('#searchQuery').val();
                 
-                if ($row.length > 0) {
-                    // Update the row cells with new data
-                    $row.find('td:eq(0)').text(document.Title);
-                    $row.find('td:eq(1)').text(document.Category);
-                    $row.find('td:eq(2)').text(document.Author);
-                    $row.find('td:eq(3)').text(document.CreatedAt);
-
-                    // Add visual feedback - flash the row with animation
-                    $row.css({
-                        'background-color': '#d1e7dd',
-                        'transition': 'background-color 0.3s ease'
-                    });
-                    
-                    setTimeout(function () {
-                        $row.css({
-                            'background-color': '',
-                            'transition': 'background-color 1s ease'
+                $.ajax({
+                    url: '@Url.Action("Index", "Documents")',
+                    type: 'GET',
+                    data: { q: query },
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    beforeSend: function () {
+                        $('#documentsList').css('opacity', '0.5');
+                    },
+                    success: function (response) {
+                        // Replace table body content
+                        $('#documentsList').html(response);
+                        
+                        // Add flash animation
+                        $('#documentsList').css({
+                            'opacity': '1',
+                            'background-color': '#d1e7dd',
+                            'transition': 'all 0.3s ease'
                         });
-                    }, 500);
-
-                    // Note: Global notification handler already shows a toast
-                    // No need for duplicate notification here
-                }
+                        
+                        setTimeout(function () {
+                            $('#documentsList').css('background-color', '');
+                        }, 1000);
+                    },
+                    error: function () {
+                        $('#documentsList').css('opacity', '1');
+                        console.error('Error reloading documents table');
+                    }
+                });
             }
         });
     </script>

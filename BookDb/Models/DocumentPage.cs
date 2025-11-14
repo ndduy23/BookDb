@@ -20,7 +20,5 @@ namespace BookDb.Models
 
         [MaxLength(100)]
         public string? ContentType { get; set; }
-        public Bookmark? Bookmark { get; set; }
-
     }
 }

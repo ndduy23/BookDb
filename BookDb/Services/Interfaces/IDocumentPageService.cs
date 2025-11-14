@@ -9,6 +9,5 @@ namespace BookDb.Services.Interfaces
         Task<IEnumerable<DocumentPage>> GetPagesOfDocumentAsync(int documentId);
         Task CreatePageAsync(DocumentPage page);
         Task DeletePageAsync(int id);
-        Task<IEnumerable<DocumentPage>> GetPagesWithBookmarksAsync(int documentId);
     }
 }

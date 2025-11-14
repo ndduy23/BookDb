@@ -1,0 +1,60 @@
+@model IEnumerable<BookDb.Models.Author>
+@{
+ ViewData["Title"] = "Qu?n lý tác gi?";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+ <h2>Qu?n lý tác gi?</h2>
+</div>
+
+@if (TempData["Error"] != null)
+{
+ <div class="alert alert-danger">@TempData["Error"]</div>
+}
+@if (TempData["Success"] != null)
+{
+ <div class="alert alert-success">@TempData["Success"]</div>
+}
+
+<div class="card mb-3">
+ <div class="card-body">
+ <form method="post" asp-controller="Authors" asp-action="Create" asp-area="admin">
+ <div class="row g-2">
+ <div class="col-md-5">
+ <input type="text" name="name" class="form-control" placeholder="Tên tác gi?" required />
+ </div>
+ <div class="col-md-5">
+ <input type="text" name="bio" class="form-control" placeholder="Ti?u s? (tùy ch?n)" />
+ </div>
+ <div class="col-md-2">
+ <button class="btn btn-primary" type="submit">Thêm tác gi?</button>
+ </div>
+ </div>
+ </form>
+ </div>
+</div>
+
+<table class="table table-striped">
+ <thead>
+ <tr>
+ <th>Tên</th>
+ <th>Ti?u s?</th>
+ <th style="width:120px;">Hành ??ng</th>
+ </tr>
+ </thead>
+ <tbody>
+ @foreach (var a in Model)
+ {
+ <tr>
+ <td>@a.Name</td>
+ <td>@a.Bio</td>
+ <td>
+ <form method="post" asp-controller="Authors" asp-action="Delete" asp-area="admin" asp-route-id="@a.Id" onsubmit="return confirm('Xác nh?n xóa?')">
+ @Html.AntiForgeryToken()
+ <button class="btn btn-sm btn-danger" type="submit">Xóa</button>
+ </form>
+ </td>
+ </tr>
+ }
+ </tbody>
+</table>

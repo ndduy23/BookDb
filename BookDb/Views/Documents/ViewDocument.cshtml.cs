@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using BookDb.Models;
+using System.IO;
+using System.Net;
 
 namespace BookDb.Views.Documents
 {
@@ -80,11 +82,6 @@ namespace BookDb.Views.Documents
                 .FirstOrDefault(p => p.PageNumber == Page);
         }
 
-        public bool CurrentPageHasBookmark()
-        {
-            var currentPageDoc = GetCurrentPageDocument();
-            return currentPageDoc?.Bookmark != null;
-        }
 
         public bool IsHtmlContent()
         {
@@ -137,6 +134,23 @@ namespace BookDb.Views.Documents
         public string GetFilePath()
         {
             return Document?.FilePath ?? string.Empty;
+        }
+
+        // Helper used by the Razor view to safely embed document title in JS single-quoted string
+        public string GetSafeTitle()
+        {
+            var t = Document?.Title ?? string.Empty;
+            // Escape single quotes and newlines for JavaScript single-quoted string
+            t = t.Replace("\\", "\\\\").Replace("'", "\\'").Replace("\r", " ").Replace("\n", " ");
+            return t;
+        }
+
+        // Helper to get file extension for client-side logic
+        public string GetFileExtension()
+        {
+            var fn = Document?.FileName ?? string.Empty;
+            if (string.IsNullOrEmpty(fn)) return string.Empty;
+            return Path.GetExtension(fn).ToLowerInvariant();
         }
     }
 }

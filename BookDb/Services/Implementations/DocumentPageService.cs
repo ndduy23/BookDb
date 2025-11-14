@@ -1,6 +1,5 @@
 using BookDb.Models;
 using BookDb.Repositories.Interfaces;
-using BookDb.Repository.Interfaces;
 using BookDb.Services.Interfaces;
 using System;
 using System.Collections.Generic;
@@ -82,11 +81,6 @@ namespace BookDb.Services.Implementations
 
             _pageRepo.Delete(page);
             await _context.SaveChangesAsync();
-        }
-
-        public Task<IEnumerable<DocumentPage>> GetPagesWithBookmarksAsync(int documentId)
-        {
-            return _pageRepo.GetPagesWithBookmarksAsync(documentId);
         }
     }
 }

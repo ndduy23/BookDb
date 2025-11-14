@@ -7,8 +7,6 @@
 <h2>Thêm tài liệu mới</h2>
 
 <form id="uploadForm" enctype="multipart/form-data">
-    @Html.AntiForgeryToken()
-
     <div class="form-group mb-3">
         <label for="title">Tiêu đề <span class="text-danger">*</span></label>
         <input type="text" name="title" id="title" class="form-control" required />
@@ -17,17 +15,25 @@
 
     <div class="form-group mb-3">
         <label for="category">Lĩnh vực</label>
-        <input type="text" name="category" id="category" class="form-control" />
+        <input type="text" name="category" id="category" class="form-control" placeholder="Ví dụ: Khoa học, Văn học, Công nghệ..." />
     </div>
 
     <div class="form-group mb-3">
-        <label for="author">Tác giả</label>
-        <input type="text" name="author" id="author" class="form-control" />
+        <label for="authorId">Tác giả</label>
+        <div class="d-flex gap-2">
+            <select name="authorId" id="authorId" class="form-select">
+                <option value="">-- Chọn tác giả --</option>
+            </select>
+            <button type="button" id="addAuthorBtn" class="btn btn-outline-secondary" style="display:none;">
+                <i class="bi bi-plus"></i> Thêm tác giả
+            </button>
+        </div>
+        <small class="form-text text-muted">Chỉ Admin có quyền thêm tác giả mới.</small>
     </div>
 
     <div class="form-group mb-3">
         <label for="description">Mô tả</label>
-        <textarea name="description" id="description" class="form-control" rows="3"></textarea>
+        <textarea name="description" id="description" class="form-control" rows="3" placeholder="Mô tả ngắn về tài liệu"></textarea>
     </div>
 
     <div class="form-group mb-3">
@@ -62,11 +68,108 @@
     </div>
 </form>
 
+<!-- Add Author Modal -->
+<div class="modal fade" id="addAuthorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Thêm tác giả</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Tên tác giả</label>
+                    <input type="text" id="newAuthorName" class="form-control" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Tiểu sử</label>
+                    <textarea id="newAuthorBio" class="form-control" rows="3"></textarea>
+                </div>
+                <div id="addAuthorError" class="alert alert-danger d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="saveAuthorBtn" class="btn btn-primary">Lưu</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
     <script>
         $(document).ready(function () {
             const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
             let uploadInProgress = false;
+
+            function loadAuthors() {
+                $.ajax({
+                    url: '/api/authors',
+                    type: 'GET',
+                    success: function (res) {
+                        if (res && res.data) {
+                            const $sel = $('#authorId');
+                            $sel.find('option:not(:first)').remove();
+                            res.data.forEach(function (a) {
+                                $sel.append(`<option value="${a.id}">${a.name}</option>`);
+                            });
+                        }
+                    },
+                    error: function () {
+                        console.warn('Không thể tải danh sách tác giả');
+                    }
+                });
+            }
+
+            // Show add author button for Admin role
+            function updateAuthUI() {
+                if (window.JwtHelper && window.JwtHelper.hasRole && window.JwtHelper.hasRole('Admin')) {
+                    $('#addAuthorBtn').show();
+                } else {
+                    $('#addAuthorBtn').hide();
+                }
+            }
+
+            // Add author modal
+            $('#addAuthorBtn').on('click', function () {
+                $('#addAuthorError').addClass('d-none');
+                $('#newAuthorName').val('');
+                $('#newAuthorBio').val('');
+                var modal = new bootstrap.Modal(document.getElementById('addAuthorModal'));
+                modal.show();
+            });
+
+            $('#saveAuthorBtn').on('click', function () {
+                const name = $('#newAuthorName').val().trim();
+                const bio = $('#newAuthorBio').val().trim();
+                if (!name) {
+                    $('#addAuthorError').removeClass('d-none').text('Tên tác giả là bắt buộc');
+                    return;
+                }
+
+                $.ajax({
+                    url: '/api/authors',
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ name: name, bio: bio || null }),
+                    headers: { 'Authorization': 'Bearer ' + (window.JwtHelper ? window.JwtHelper.getToken() : '') },
+                    success: function (res) {
+                        if (res && res.success) {
+                            loadAuthors();
+                            var modalEl = document.getElementById('addAuthorModal');
+                            var modal = bootstrap.Modal.getInstance(modalEl);
+                            modal.hide();
+                            window.NotificationHub && window.NotificationHub.showLocal('Đã thêm tác giả', 'success');
+                        } else {
+                            $('#addAuthorError').removeClass('d-none').text(res.message || 'Lỗi');
+                        }
+                    },
+                    error: function (xhr) {
+                        let msg = 'Không thể thêm tác giả';
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        $('#addAuthorError').removeClass('d-none').text(msg);
+                    }
+                });
+            });
 
             // File input change event
             $('#file').on('change', function () {
@@ -84,25 +187,20 @@
                 }
             });
 
-            // Form validation
+            // Form submit - use FormData and include authorId
             $('#uploadForm').on('submit', function (e) {
                 e.preventDefault();
+                if (uploadInProgress) return;
 
-                if (uploadInProgress) {
-                    showStatus('Đang tải lên, vui lòng đợi...', 'warning');
-                    return;
-                }
-
-                // Validate form
                 const form = this;
                 if (!form.checkValidity()) {
                     form.classList.add('was-validated');
+                    showStatus('Vui lòng điền đầy đủ thông tin bắt buộc', 'danger');
                     return;
                 }
 
                 const title = $('#title').val().trim();
                 const file = $('#file')[0].files[0];
-
                 if (!title || !file) {
                     showStatus('Vui lòng điền đầy đủ thông tin bắt buộc', 'danger');
                     return;
@@ -112,25 +210,33 @@
             });
 
             function uploadDocument() {
-                const formData = new FormData($('#uploadForm')[0]);
-                uploadInProgress = true;
+                const formData = new FormData();
+                formData.append('title', $('#title').val());
+                formData.append('category', $('#category').val());
+                formData.append('description', $('#description').val());
+                const authorId = $('#authorId').val();
+                if (authorId) formData.append('authorId', authorId);
+                // also include author name fallback
+                formData.append('author', '');
+                formData.append('file', $('#file')[0].files[0]);
 
-                // Update UI
+                uploadInProgress = true;
                 $('#submitBtn').prop('disabled', true);
                 $('#submitText').text('Đang tải lên...');
                 $('#submitSpinner').removeClass('d-none');
                 $('#progressContainer').show();
-                $('#statusMessage').hide();
+
+                const token = window.JwtHelper ? window.JwtHelper.getToken() : null;
 
                 $.ajax({
-                    url: '@Url.Action("Create", "Documents")',
+                    url: '/api/documents/upload',
                     type: 'POST',
                     data: formData,
                     processData: false,
                     contentType: false,
+                    headers: token ? { 'Authorization': 'Bearer ' + token } : {},
                     xhr: function () {
                         const xhr = new window.XMLHttpRequest();
-                        // Upload progress
                         xhr.upload.addEventListener('progress', function (e) {
                             if (e.lengthComputable) {
                                 const percentComplete = Math.round((e.loaded / e.total) * 100);
@@ -141,52 +247,21 @@
                     },
                     success: function (response) {
                         updateProgress(100);
-                        showStatus('Tải lên thành công! Đang chuyển hướng...', 'success');
-
-                        // Send notification via SignalR
-                        if (window.NotificationHub) {
-                            const title = $('#title').val();
-                            window.NotificationHub.sendNotification(`Tài liệu mới: ${title}`);
-                        }
-
-                        // Redirect after 2 seconds
-                        setTimeout(function () {
-                            window.location.href = '@Url.Action("Index", "Documents")';
-                        }, 2000);
+                        showStatus('✅ Tải lên thành công! Đang chuyển hướng...', 'success');
+                        setTimeout(function () { window.location.href = '/documents'; }, 1200);
                     },
                     error: function (xhr) {
-                        let errorMsg = 'Có lỗi xảy ra khi tải lên';
-
-                        if (xhr.responseJSON && xhr.responseJSON.message) {
-                            errorMsg = xhr.responseJSON.message;
-                        } else if (xhr.status === 413) {
-                            errorMsg = 'File quá lớn';
-                        } else if (xhr.status === 400) {
-                            errorMsg = 'Dữ liệu không hợp lệ';
-                        }
-
-                        showStatus(errorMsg, 'danger');
+                        let msg = 'Có lỗi xảy ra khi tải lên';
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                        showStatus('❌ ' + msg, 'danger');
                         resetUploadUI();
                     },
-                    complete: function () {
-                        uploadInProgress = false;
-                    }
+                    complete: function () { uploadInProgress = false; }
                 });
             }
 
             function updateProgress(percent) {
-                $('#uploadProgress')
-                    .css('width', percent + '%')
-                    .text(percent + '%');
-            }
-
-            function showStatus(message, type) {
-                const alertClass = 'alert-' + type;
-                $('#statusMessage')
-                    .removeClass('alert-success alert-danger alert-warning alert-info')
-                    .addClass(alertClass)
-                    .html(message)
-                    .show();
+                $('#uploadProgress').css('width', percent + '%').text(percent + '%');
             }
 
             function resetUploadUI() {
@@ -194,9 +269,12 @@
                 $('#submitText').text('Lưu');
                 $('#submitSpinner').addClass('d-none');
                 updateProgress(0);
-                setTimeout(function () {
-                    $('#progressContainer').hide();
-                }, 3000);
+                setTimeout(function () { $('#progressContainer').hide(); }, 3000);
+            }
+
+            function showStatus(message, type) {
+                const alertClass = 'alert-' + type;
+                $('#statusMessage').removeClass('alert-success alert-danger alert-warning alert-info').addClass(alertClass).html(message).show();
             }
 
             function formatFileSize(bytes) {
@@ -207,14 +285,32 @@
                 return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
             }
 
-            // Real-time form validation
-            $('#title, #file').on('blur', function () {
-                if ($(this).val().trim() === '') {
-                    $(this).addClass('is-invalid');
-                } else {
-                    $(this).removeClass('is-invalid').addClass('is-valid');
-                }
-            });
+            // Init
+            updateAuthUI();
+            loadAuthors();
         });
     </script>
 }
+
+<style>
+    .was-validated .form-control:invalid {
+        border-color: #dc3545;
+    }
+
+    .was-validated .form-control:valid {
+        border-color: #198754;
+    }
+
+    .progress {
+        height: 30px;
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    #fileInfo {
+        padding: 10px;
+        background: #e7f3ff;
+        border-left: 4px solid #0d6efd;
+        border-radius: 4px;
+    }
+</style>

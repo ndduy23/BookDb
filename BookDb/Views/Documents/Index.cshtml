@@ -4,52 +4,151 @@
     ViewData["Title"] = Model.Title;
 }
 
+<style>
+    .guest-notice {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+        animation: fadeInDown 0.5s ease-out;
+    }
+
+    @@keyframes fadeInDown {
+        from
+
+    {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    }
+
+    .auth-required-overlay {
+        position: relative;
+    }
+
+        .auth-required-overlay::after {
+            content: "🔒 Đăng nhập để sử dụng tính năng này";
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-weight: bold;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+            z-index: 1000;
+        }
+
+        .auth-required-overlay:hover::after {
+            opacity: 1;
+        }
+
+    .disabled-for-guest {
+        opacity: 0.5;
+        cursor: not-allowed;
+        pointer-events: none;
+    }
+
+    .document-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+        .document-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+        }
+</style>
+
+<!-- Guest Notice - Show only for non-authenticated users -->
+<div id="guestNotice" class="guest-notice" style="display:none;">
+    <div class="d-flex align-items-center justify-content-between">
+        <div>
+            <h5 class="mb-2">👋 Chào mừng bạn đến với BookDb!</h5>
+            <p class="mb-0">
+                Bạn đang ở chế độ <strong>Khách</strong>.
+                Bạn có thể <strong>xem tài liệu</strong>, nhưng cần
+                <strong>đăng nhập</strong> để thêm, sửa, xóa tài liệu và tạo bookmark.
+            </p>
+        </div>
+        <div>
+            <a href="/auth/login" class="btn btn-light btn-lg">
+                <i class="bi bi-box-arrow-in-right"></i> Đăng nhập
+            </a>
+            <a href="/auth/register" class="btn btn-outline-light btn-lg ms-2">
+                <i class="bi bi-person-plus"></i> Đăng ký
+            </a>
+        </div>
+    </div>
+</div>
+
 <h2>@Model.Title</h2>
 
 <div class="row mb-3">
     <div class="col-md-8">
-        <a asp-action="Create" class="btn btn-primary">+ Thêm tài liệu mới</a>
+        <!-- Only show for authenticated users -->
+        <div class="auth-only" style="display:inline-block;">
+            <a asp-action="Create" class="btn btn-primary">
+                <i class="bi bi-file-earmark-plus"></i> Thêm tài liệu mới
+            </a>
+        </div>
+
+        <!-- Show disabled for guests -->
+        <div class="guest-only" style="display:none;">
+            <div class="auth-required-overlay">
+                <button class="btn btn-secondary disabled-for-guest">
+                    <i class="bi bi-file-earmark-plus"></i> Thêm tài liệu mới
+                </button>
+            </div>
+        </div>
+
+        <div class="btn-group ms-2" role="group" aria-label="Document filters">
+            <a asp-action="Index" asp-route-onlyMine="false" class="btn btn-outline-secondary @(Model.OnlyMine ? "" : "active")">Tất cả</a>
+            <a asp-action="Index" asp-route-onlyMine="true" class="btn btn-outline-primary @(Model.OnlyMine ? "active" : "")">Tài liệu của tôi</a>
+        </div>
+
         <button type="button" class="btn btn-info" id="refreshBtn">
             <span class="spinner-border spinner-border-sm d-none" id="refreshSpinner"></span>
-            Làm mới
+            <i class="bi bi-arrow-clockwise"></i> Làm mới
         </button>
     </div>
     <div class="col-md-4">
         <form method="get" asp-action="Index" id="searchForm">
             <div class="input-group">
-                <input type="text" name="q" id="searchQuery" class="form-control" placeholder="Tìm kiếm..." value="@Model.SearchQuery" />
-                <button type="submit" class="btn btn-info">Tìm</button>
+                <input type="text" name="q" id="searchQuery" class="form-control"
+                       placeholder="Tìm kiếm tài liệu..." value="@Model.SearchQuery" />
+                <button type="submit" class="btn btn-info">
+                    <i class="bi bi-search"></i> Tìm
+                </button>
             </div>
         </form>
     </div>
 </div>
 
 <div id="documentsTable">
-    <table class="table table-bordered table-striped">
-        <thead>
+    <table class="table table-bordered table-striped table-hover">
+        <thead class="table-primary">
             <tr>
-                <th>Tiêu đề</th>
-                <th>Lĩnh vực</th>
-                <th>Tác giả</th>
-                <th>Ngày tạo</th>
-                <th>Thao tác</th>
+                <th><i class="bi bi-file-text"></i> Tiêu đề</th>
+                <th><i class="bi bi-tag"></i> Lĩnh vực</th>
+                <th><i class="bi bi-person"></i> Tác giả</th>
+                <th><i class="bi bi-calendar"></i> Ngày tạo</th>
+                <th style="width:220px;"><i class="bi bi-gear"></i> Thao tác</th>
             </tr>
         </thead>
-            <tbody id="documentsList">
-            @foreach (var item in Model.Documents)
-            {
-                <tr data-document-id="@item.Id">
-                    <td>@item.Title</td>
-                    <td>@item.Category</td>
-                    <td>@item.Author</td>
-                    <td>@Model.GetFormattedDate(item.CreatedAt)</td>
-                    <td>
-                        <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
-                        <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
-                        <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@item.Id">Xóa</button>
-                    </td>
-                </tr>
-            }
+        <tbody id="documentsList">
+            @Html.Partial("_DocumentsTablePartial", Model)
         </tbody>
     </table>
 </div>
@@ -67,6 +166,9 @@
 @section Scripts {
     <script>
         $(document).ready(function () {
+            // Check authentication status and show/hide elements
+            updateUIBasedOnAuth();
+
             // Ajax search with debounce
             let searchTimeout;
             $('#searchQuery').on('input', function () {
@@ -76,12 +178,28 @@
                 }, 500);
             });
 
+            function updateUIBasedOnAuth() {
+                const isAuthenticated = window.JwtHelper && window.JwtHelper.isAuthenticated();
+
+                if (isAuthenticated) {
+                    // User is logged in
+                    $('.auth-only').show();
+                    $('.guest-only').hide();
+                    $('#guestNotice').hide();
+                } else {
+                    // User is guest
+                    $('.auth-only').hide();
+                    $('.guest-only').show();
+                    $('#guestNotice').show();
+                }
+            }
+
             function performSearch() {
                 const query = $('#searchQuery').val();
                 $.ajax({
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
-                    data: { q: query },
+                    data: { q: query, onlyMine: '@Model.OnlyMine'.toLowerCase() === 'true' },
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest'
                     },
@@ -90,14 +208,15 @@
                         $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        // Replace table body content with partial view
                         $('#documentsList').html(response);
                         $('#documentsList').css('opacity', '1');
-                        // No notification when searching
+                        updateUIBasedOnAuth(); // Re-apply auth UI
                     },
                     error: function () {
                         $('#documentsList').css('opacity', '1');
-                        window.NotificationHub.showLocal('Có lỗi khi tìm kiếm', 'error');
+                        if (window.NotificationHub) {
+                            window.NotificationHub.showLocal('Có lỗi khi tìm kiếm', 'error');
+                        }
                     },
                     complete: function () {
                         $('#refreshSpinner').addClass('d-none');
@@ -115,7 +234,7 @@
                 $.ajax({
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
-                    data: { q: query },
+                    data: { q: query, onlyMine: '@Model.OnlyMine'.toLowerCase() === 'true' },
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest'
                     },
@@ -124,14 +243,18 @@
                         $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        // Replace table body content with partial view
                         $('#documentsList').html(response);
                         $('#documentsList').css('opacity', '1');
-                        window.NotificationHub.showLocal('Đã làm mới danh sách', 'success');
+                        updateUIBasedOnAuth();
+                        if (window.NotificationHub) {
+                            window.NotificationHub.showLocal('Đã làm mới danh sách', 'success');
+                        }
                     },
                     error: function () {
                         $('#documentsList').css('opacity', '1');
-                        window.NotificationHub.showLocal('Có lỗi khi làm mới', 'error');
+                        if (window.NotificationHub) {
+                            window.NotificationHub.showLocal('Có lỗi khi làm mới', 'error');
+                        }
                     },
                     complete: function () {
                         $('#refreshSpinner').addClass('d-none');
@@ -139,11 +262,16 @@
                 });
             }
 
-            // Ajax delete with SignalR notification
+            // Ajax delete - only works if authenticated
             $(document).on('click', '.delete-btn', function () {
+                if (!window.JwtHelper.isAuthenticated()) {
+                    alert('Vui lòng đăng nhập để xóa tài liệu');
+                    return;
+                }
+
                 const documentId = $(this).data('id');
+                const title = $(this).data('title');
                 const $row = $(this).closest('tr');
-                const title = $row.find('td:first').text();
 
                 if (!confirm('Bạn có chắc muốn xóa tài liệu "' + title + '"?')) {
                     return;
@@ -159,18 +287,23 @@
                         $('#loadingOverlay').show();
                     },
                     success: function (response) {
-                        window.NotificationHub.showLocal('Đã xóa tài liệu: ' + title, 'success');
-                        
-                        // Reload table immediately after delete
-                        // SignalR DocumentDeleted event will also trigger reload for other clients
+                        if (window.NotificationHub) {
+                            window.NotificationHub.showLocal('Đã xóa tài liệu: ' + title, 'success');
+                        }
                         reloadDocumentsTable();
                     },
                     error: function (xhr) {
                         let errorMsg = 'Có lỗi khi xóa tài liệu';
                         if (xhr.status === 404) {
                             errorMsg = 'Không tìm thấy tài liệu';
+                        } else if (xhr.status === 401) {
+                            errorMsg = 'Vui lòng đăng nhập để xóa tài liệu';
+                        } else if (xhr.status === 403) {
+                            errorMsg = 'Bạn không có quyền xóa tài liệu này';
                         }
-                        window.NotificationHub.showLocal(errorMsg, 'error');
+                        if (window.NotificationHub) {
+                            window.NotificationHub.showLocal(errorMsg, 'error');
+                        }
                     },
                     complete: function () {
                         $('#loadingOverlay').hide();
@@ -178,11 +311,10 @@
                 });
             });
 
-            // Listen for document updates via SignalR and auto-reload table
+            // Listen for document updates via SignalR
             if (window.NotificationHub && window.NotificationHub.connection) {
                 setupDocumentUpdateListener();
             } else {
-                // Wait for NotificationHub to initialize
                 setTimeout(setupDocumentUpdateListener, 1000);
             }
 
@@ -194,19 +326,16 @@
 
                 const connection = window.NotificationHub.connection;
 
-                // Listen for document updates - reload table via AJAX
                 connection.on('DocumentUpdated', function (data) {
                     console.log('Document updated:', data);
                     reloadDocumentsTable();
                 });
 
-                // Listen for document added - reload table via AJAX
                 connection.on('DocumentAdded', function (data) {
                     console.log('Document added:', data);
                     reloadDocumentsTable();
                 });
 
-                // Listen for document deleted - reload table via AJAX
                 connection.on('DocumentDeleted', function (data) {
                     console.log('Document deleted:', data);
                     reloadDocumentsTable();
@@ -215,11 +344,11 @@
 
             function reloadDocumentsTable() {
                 const query = $('#searchQuery').val();
-                
+
                 $.ajax({
                     url: '@Url.Action("Index", "Documents")',
                     type: 'GET',
-                    data: { q: query },
+                    data: { q: query, onlyMine: '@Model.OnlyMine'.toLowerCase() === 'true' },
                     headers: {
                         'X-Requested-With': 'XMLHttpRequest'
                     },
@@ -227,16 +356,15 @@
                         $('#documentsList').css('opacity', '0.5');
                     },
                     success: function (response) {
-                        // Replace table body content
                         $('#documentsList').html(response);
-                        
-                        // Add flash animation
                         $('#documentsList').css({
                             'opacity': '1',
                             'background-color': '#d1e7dd',
                             'transition': 'all 0.3s ease'
                         });
-                        
+
+                        updateUIBasedOnAuth();
+
                         setTimeout(function () {
                             $('#documentsList').css('background-color', '');
                         }, 1000);

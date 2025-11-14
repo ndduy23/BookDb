@@ -31,5 +31,28 @@ namespace BookDb.Repositories.Implementations
                                 .Take(pageSize)
                                 .ToListAsync();
         }
+
+        // New overload supporting owner filtering
+        public async Task<List<Document>> GetPagedAndSearchedAsync(string? q, string? userId, bool onlyMine, int page, int pageSize)
+        {
+            var query = _context.Documents.AsQueryable();
+
+            if (!string.IsNullOrEmpty(q))
+            {
+                query = query.Where(d => EF.Functions.Like(d.Title, $"%{q}%") ||
+                                          EF.Functions.Like(d.Author, $"%{q}%") ||
+                                          EF.Functions.Like(d.Category, $"%{q}%"));
+            }
+
+            if (onlyMine && !string.IsNullOrEmpty(userId))
+            {
+                query = query.Where(d => d.OwnerId == userId);
+            }
+
+            return await query.OrderByDescending(d => d.CreatedAt)
+                                .Skip((page - 1) * pageSize)
+                                .Take(pageSize)
+                                .ToListAsync();
+        }
     }
 }

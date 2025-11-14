@@ -1,312 +1,1778 @@
 @model BookDb.Views.Documents.ViewDocumentModel
 
 @{
-    ViewData["Title"] = Model.Title;
+    ViewData["Title"] = Model.GetDocumentTitle();
+    var filePath = Url.Content(Model.GetFilePath());
+    var fileExt = System.IO.Path.GetExtension(filePath)?.TrimStart('.').ToLowerInvariant() ?? "";
 }
 
 <style>
-    #addBookmarkBtn {
-        transition: all 0.3s ease;
-        min-width: 150px;
+    :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --sidebar-width:320px;
+        --toolbar-height:60px;
     }
-    
-    #addBookmarkBtn:disabled {
+
+    * {
+        box-sizing: border-box;
+    }
+
+    body {
+        overflow: hidden;
+        margin:0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+
+    /* Main Container */
+    .viewer-container {
+        display: flex;
+        height: calc(100vh -60px);
+        position: fixed;
+        top:60px;
+        left:0;
+        right:0;
+        bottom:0;
+        background: #2c3e50;
+    }
+
+    /* Sidebar */
+    .sidebar {
+        width: var(--sidebar-width);
+        background: #f8f9fa;
+        border-right:1px solid #dee2e6;
+        display: flex;
+        flex-direction: column;
+        transition: transform0.3s ease;
+        z-index:100;
+    }
+
+    .sidebar.collapsed {
+        transform: translateX(calc(-1 * var(--sidebar-width)));
+    }
+
+    .sidebar-header {
+        padding:20px;
+        background: white;
+        border-bottom:2px solid #e9ecef;
+        box-shadow:02px4px rgba(0,0,0,0.05);
+    }
+
+    .sidebar-tabs {
+        display: flex;
+        background: white;
+        border-bottom:1px solid #dee2e6;
+    }
+
+    .sidebar-tab {
+        flex:1;
+        padding:12px;
+        text-align: center;
+        cursor: pointer;
+        border-bottom:3px solid transparent;
+        transition: all0.2s;
+        font-weight:500;
+    }
+
+    .sidebar-tab:hover {
+        background: #f8f9fa;
+    }
+
+    .sidebar-tab.active {
+        border-bottom-color: var(--primary-color);
+        color: var(--primary-color);
+    }
+
+    .sidebar-content {
+        flex:1;
+        overflow-y: auto;
+        padding:15px;
+    }
+
+    /* Main Viewer Area */
+    .viewer-main {
+        flex:1;
+        display: flex;
+        flex-direction: column;
+        background: #525659;
+        position: relative;
+    }
+
+    /* Toolbar */
+    .toolbar {
+        background: linear-gradient(135deg, #3236390%, #2c3e50100%);
+        padding:020px;
+        display: flex;
+        align-items: center;
+        gap:15px;
+        height: var(--toolbar-height);
+        color: white;
+        box-shadow:02px8px rgba(0,0,0,0.2);
+        flex-wrap: wrap;
+        z-index:10;
+    }
+
+    .toolbar-group {
+        display: flex;
+        align-items: center;
+        gap:8px;
+        padding:015px;
+        border-right:1px solid rgba(255,255,255,0.1);
+        height:40px;
+    }
+
+    .toolbar-group:last-child {
+        border-right: none;
+        margin-left: auto;
+    }
+
+    .toolbar-btn {
+        background: rgba(255,255,255,0.1);
+        color: white;
+        border: none;
+        padding:8px16px;
+        border-radius:6px;
+        cursor: pointer;
+        transition: all0.2s;
+        font-size:14px;
+        display: flex;
+        align-items: center;
+        gap:6px;
+    }
+
+    .toolbar-btn:hover {
+        background: rgba(255,255,255,0.2);
+        transform: translateY(-1px);
+    }
+
+    .toolbar-btn:active {
+        transform: translateY(0);
+    }
+
+    .toolbar-btn:disabled {
+        opacity:0.4;
         cursor: not-allowed;
     }
-    
-    .bookmark-success {
-        animation: bookmarkPulse 0.5s ease-out;
+
+    .toolbar-btn.active {
+        background: var(--primary-color);
+        box-shadow:0002px rgba(102,126,234,0.3);
     }
-    
-    @@keyframes bookmarkPulse {
-        0%, 100% {
-            transform: scale(1);
-        }
-        50% {
-            transform: scale(1.05);
-        }
+
+    .toolbar-input {
+        background: rgba(255,255,255,0.1);
+        border:1px solid rgba(255,255,255,0.2);
+        color: white;
+        padding:6px12px;
+        border-radius:4px;
+        width:60px;
+        text-align: center;
+    }
+
+    .toolbar-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        background: rgba(255,255,255,0.15);
+    }
+
+    /* Content Area */
+    .content-area {
+        flex:1;
+        overflow: auto;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        padding:30px;
+        position: relative;
+    }
+
+    .content-wrapper {
+        max-width:100%;
+        position: relative;
+    }
+
+    /* PDF Canvas */
+    #pdfCanvas {
+        box-shadow:08px32px rgba(0,0,0,0.4);
+        background: white;
+        display: block;
+    }
+
+    /* Text Layer for PDF */
+    .text-layer {
+        position: absolute;
+        left:0;
+        top:0;
+        right:0;
+        bottom:0;
+        overflow: hidden;
+        opacity:0.2;
+        line-height:1;
+        pointer-events: none;
+    }
+
+    .text-layer.selectable {
+        pointer-events: auto;
+    }
+
+    .text-layer > span {
+        color: transparent;
+        position: absolute;
+        white-space: pre;
+        cursor: text;
+        transform-origin:0%0%;
+    }
+
+    /* Highlight mark styling for search */
+    .text-layer mark, .generic-viewer mark {
+        background: rgba(255,255,0,0.6);
+        color: inherit;
+        padding:02px;
+        border-radius:2px;
+    }
+
+    /* Generic Content Viewer */
+    .generic-viewer {
+        background: white;
+        padding:40px;
+        border-radius:8px;
+        box-shadow:08px32px rgba(0,0,0,0.4);
+        max-width:1200px;
+        width:100%;
+        min-height:600px;
+        color: #333;
+        font-size:15px;
+        line-height:1.8;
+    }
+
+    .generic-viewer pre {
+        white-space: pre-wrap;
+        font-family: 'Consolas', 'Monaco', monospace;
+        background: #f8f9fa;
+        padding:20px;
+        border-radius:6px;
+        border-left:4px solid var(--primary-color);
+    }
+
+    .generic-viewer table {
+        border-collapse: collapse;
+        width:100%;
+        margin:20px0;
+    }
+
+    .generic-viewer table td,
+    .generic-viewer table th {
+        border:1px solid #dee2e6;
+        padding:8px12px;
+        text-align: left;
+    }
+
+    .generic-viewer table th {
+        background: #f8f9fa;
+        font-weight:600;
+    }
+
+    /* Bookmarks */
+    .bookmark-item {
+        background: white;
+        padding:15px;
+        margin-bottom:12px;
+        border-radius:8px;
+        border-left:4px solid var(--primary-color);
+        cursor: pointer;
+        transition: all0.2s;
+        box-shadow:02px4px rgba(0,0,0,0.08);
+    }
+
+    .bookmark-item:hover {
+        box-shadow:04px12px rgba(0,0,0,0.15);
+        transform: translateX(5px);
+    }
+
+    .bookmark-title {
+        font-weight:600;
+        color: #333;
+        margin-bottom:8px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .bookmark-text {
+        font-size:13px;
+        color: #666;
+        display: -webkit-box;
+        -webkit-line-clamp:2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        margin-bottom:8px;
+    }
+
+    .bookmark-meta {
+        font-size:12px;
+        color: #999;
+    }
+
+    .bookmark-delete {
+        color: #dc3545;
+        cursor: pointer;
+        padding:4px8px;
+        border-radius:4px;
+        transition: all0.2s;
+    }
+
+    .bookmark-delete:hover {
+        background: #dc3545;
+        color: white;
+    }
+
+    /* Thumbnails */
+    .thumbnail-item {
+        margin-bottom:15px;
+        cursor: pointer;
+        border:3px solid transparent;
+        border-radius:8px;
+        padding:8px;
+        transition: all0.2s;
+        background: white;
+    }
+
+    .thumbnail-item:hover {
+        border-color: var(--primary-color);
+        box-shadow:04px12px rgba(0,0,0,0.15);
+    }
+
+    .thumbnail-item.active {
+        border-color: var(--primary-color);
+        background: #e3f2fd;
+    }
+
+    .thumbnail-canvas {
+        width:100%;
+        box-shadow:02px8px rgba(0,0,0,0.1);
+        border-radius:4px;
+    }
+
+    .thumbnail-label {
+        text-align: center;
+        margin-top:8px;
+        font-size:13px;
+        font-weight:500;
+        color: #666;
+    }
+
+    /* Search Panel */
+    .search-panel {
+        position: absolute;
+        top:20px;
+        right:20px;
+        background: white;
+        padding:20px;
+        border-radius:12px;
+        box-shadow:08px32px rgba(0,0,0,0.2);
+        z-index:1000;
+        min-width:350px;
+        max-height:500px;
+        display: none;
+    }
+
+    .search-panel.active {
+        display: flex;
+        flex-direction: column;
+        animation: slideInRight0.3s ease-out;
+    }
+
+    @@keyframes slideInRight {
+        from
+
+    {
+        transform: translateX(100px);
+        opacity:0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity:1;
+    }
+
+    }
+
+    .search-input-group {
+        display: flex;
+        gap:8px;
+        margin-bottom:15px;
+    }
+
+    .search-input {
+        flex:1;
+        padding:10px15px;
+        border:2px solid #e9ecef;
+        border-radius:8px;
+        font-size:14px;
+    }
+
+    .search-input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+
+    .search-results {
+        flex:1;
+        overflow-y: auto;
+        max-height:350px;
+    }
+
+    .search-result-item {
+        padding:12px;
+        cursor: pointer;
+        border-bottom:1px solid #f0f0f0;
+        transition: background0.2s;
+        border-radius:6px;
+        margin-bottom:6px;
+    }
+
+    .search-result-item:hover {
+        background: #f8f9fa;
+    }
+
+    .search-result-item.active {
+        background: #e3f2fd;
+    }
+
+    .search-result-context {
+        font-size:13px;
+        color: #666;
+        margin-top:6px;
+    }
+
+    /* Highlight Layer */
+    .highlight-layer {
+        position: absolute;
+        left:0;
+        top:0;
+        pointer-events: none;
+    }
+
+    .highlight {
+        position: absolute;
+        background: rgba(255,255,0,0.3);
+        border:2px solid rgba(255,200,0,0.6);
+        pointer-events: all;
+        cursor: pointer;
+        transition: all0.2s;
+    }
+
+    .highlight:hover {
+        background: rgba(255,255,0,0.5);
+        border-color: rgba(255,200,0,0.8);
+    }
+
+    /* Loading Overlay */
+    .loading-overlay {
+        position: absolute;
+        top:0;
+        left:0;
+        right:0;
+        bottom:0;
+        background: rgba(0,0,0,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index:10000;
+    }
+
+    .loading-content {
+        text-align: center;
+        color: white;
+    }
+
+    .loading-spinner {
+        width:60px;
+        height:60px;
+        border:4px solid rgba(255,255,255,0.2);
+        border-top-color: var(--primary-color);
+        border-radius:50%;
+        animation: spin1s linear infinite;
+        margin:0 auto20px;
+    }
+
+    @@keyframes spin {
+        to
+
+    {
+        transform: rotate(360deg);
+    }
+
+    }
+
+    /* Edit Mode */
+    .editable-content {
+        border:2px dashed transparent;
+        padding:10px;
+        border-radius:4px;
+        transition: all0.2s;
+    }
+
+    .editable-content:hover {
+        border-color: var(--primary-color);
+        background: rgba(102,126,234,0.05);
+    }
+
+    .editable-content[contenteditable="true"] {
+        border-color: var(--primary-color);
+        background: white;
+        outline: none;
+    }
+
+    /* Responsive */
+    @@media (max-width:768px) {
+        .sidebar
+
+    {
+        position: absolute;
+        left:0;
+        top:0;
+        bottom:0;
+        z-index:1000;
+        box-shadow:2px08px rgba(0,0,0,0.2);
+    }
+
+    .toolbar {
+        flex-wrap: wrap;
+        height: auto;
+        padding:10px;
+    }
+
+    .toolbar-group {
+        border-right: none;
+        padding:5px;
+    }
+
+    .content-area {
+        padding:15px;
+    }
+
+    .search-panel {
+        left:10px;
+        right:10px;
+        min-width: auto;
+    }
+
+    }
+
+    /* Toast Notifications */
+    .toast-notification {
+        position: fixed;
+        bottom:30px;
+        right:30px;
+        background: white;
+        padding:15px20px;
+        border-radius:8px;
+        box-shadow:04px16px rgba(0,0,0,0.2);
+        z-index:10001;
+        animation: slideInUp0.3s ease-out;
+        max-width:350px;
+    }
+
+    @@keyframes slideInUp {
+        from
+
+    {
+        transform: translateY(100px);
+        opacity:0;
+    }
+
+    to {
+        transform: translateY(0);
+        opacity:1;
+    }
+
     }
 </style>
 
-<h2>@Model.GetDocumentTitle()</h2>
-<p>
-    <b>Tác giả:</b> @Model.GetDocumentAuthor() <br />
-    <b>Lĩnh vực:</b> @Model.GetDocumentCategory() <br />
-    <b>Ngày tạo:</b> @Model.GetFormattedDate() <br />
-    <b>Mô tả:</b> @Model.GetDocumentDescription()
-</p>
+<div class="viewer-container">
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h5 class="mb-1" style="color: #333; font-weight:600;">@Model.GetDocumentTitle()</h5>
+            <small class="text-muted">
+                <i class="bi bi-person"></i> @Model.GetDocumentAuthor()
+            </small>
+        </div>
 
-<!-- Nút chuyển đổi giữa bản gốc và bản phân trang -->
-<div class="mb-3 d-flex align-items-center">
-    @if (Model.IsPagedMode())
-    {
-        <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="original" class="btn btn-info">
-            Xem bản gốc
-        </a>
-    }
-    else
-    {
-        <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" class="btn btn-info">
-            Xem bản phân trang
-        </a>
-    }
-
-    @* Page controls placed next to the mode switch *@
-    @if (Model.IsPagedMode() && Model.HasPages() && Model.TotalPages > 0)
-    {
-        <div class="ms-3">
-            <div class="btn-group" role="group" aria-label="Trang">
-                @if (Model.HasPreviousPage())
-                {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.GetPreviousPageNumber()" class="btn btn-secondary">←</a>
-                }
-
-                <a class="btn btn-light disabled">@Model.GetPageInfo()</a>
-
-                @if (Model.HasNextPage())
-                {
-                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.GetNextPageNumber()" class="btn btn-secondary">→</a>
-                    <a asp-action="ViewDocument" asp-route-id="@Model.GetDocumentId()" asp-route-mode="paged" asp-route-page="@Model.TotalPages" class="btn btn-secondary">Trang cuối »</a>
-                }
+        <div class="sidebar-tabs">
+            <div class="sidebar-tab active" data-tab="pages">
+                <i class="bi bi-file-earmark"></i> Trang
+            </div>
+            <div class="sidebar-tab" data-tab="bookmarks">
+                <i class="bi bi-bookmark"></i> Bookmark
+            </div>
+            <div class="sidebar-tab" data-tab="outline">
+                <i class="bi bi-list-ul"></i> Mục lục
             </div>
         </div>
-    }
+
+        <div class="sidebar-content">
+            <!-- Pages/Thumbnails -->
+            <div class="tab-pane active" data-content="pages" id="pagesContainer">
+                <p class="text-muted text-center">Đang tải...</p>
+            </div>
+
+            <!-- Bookmarks -->
+            <div class="tab-pane" data-content="bookmarks" id="bookmarksContainer" style="display:none;">
+                <p class="text-muted text-center">Chưa có bookmark</p>
+            </div>
+
+            <!-- Outline -->
+            <div class="tab-pane" data-content="outline" id="outlineContainer" style="display:none;">
+                <p class="text-muted text-center">Không có mục lục</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Viewer -->
+    <div class="viewer-main">
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="toggleSidebar" title="Toggle Sidebar">
+                    <i class="bi bi-layout-sidebar"></i>
+                </button>
+            </div>
+
+            <div class="toolbar-group" id="pageControls">
+                <button class="toolbar-btn" id="prevPage" title="Previous Page">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <input type="number" id="pageNum" class="toolbar-input" value="1" min="1">
+                <span style="opacity:0.7;">/ <span id="pageCount">0</span></span>
+                <button class="toolbar-btn" id="nextPage" title="Next Page">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="zoomOut" title="Zoom Out">
+                    <i class="bi bi-dash-lg"></i>
+                </button>
+                <span id="zoomLevel" style="min-width:50px; text-align: center;">100%</span>
+                <button class="toolbar-btn" id="zoomIn" title="Zoom In">
+                    <i class="bi bi-plus-lg"></i>
+                </button>
+                <button class="toolbar-btn" id="fitWidth" title="Fit Width">
+                    <i class="bi bi-arrows-angle-contract"></i>
+                </button>
+            </div>
+
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="searchBtn" title="Search">
+                    <i class="bi bi-search"></i>
+                </button>
+                <button class="toolbar-btn" id="highlightBtn" title="Highlight Mode">
+                    <i class="bi bi-highlighter"></i>
+                </button>
+                <button class="toolbar-btn" id="editBtn" title="Edit Mode">
+                    <i class="bi bi-pencil"></i>
+                </button>
+            </div>
+
+            <div class="toolbar-group">
+                <label style="margin-right:8px; font-weight:500;">Phân trang:</label>
+                <select id="paginationMode" class="toolbar-input" style="width:120px;">
+                    <option value="items">Theo dòng/khối</option>
+                    <option value="chars">Theo ký tự</option>
+                </select>
+                <input type="number" id="charsPerPage" class="toolbar-input" value="2000" min="100" style="width:100px; margin-left:6px;" title="Số ký tự mỗi trang">
+            </div>
+
+            <div class="toolbar-group">
+                <button class="toolbar-btn" id="downloadBtn" title="Download">
+                    <i class="bi bi-download"></i>
+                </button>
+                <button class="toolbar-btn" id="printBtn" title="Print">
+                    <i class="bi bi-printer"></i>
+                </button>
+                <a href="/documents" class="toolbar-btn" title="Close">
+                    <i class="bi bi-x-lg"></i>
+                </a>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="content-area" id="contentArea">
+            <div class="content-wrapper" id="contentWrapper">
+                <!-- PDF Canvas -->
+                <canvas id="pdfCanvas" style="display:none;"></canvas>
+                <div class="text-layer" id="textLayer" style="display:none;"></div>
+                <div class="highlight-layer" id="highlightLayer" style="display:none;"></div>
+
+                <!-- Generic Content -->
+                <div class="generic-viewer" id="genericViewer" style="display:none;"></div>
+            </div>
+        </div>
+
+        <!-- Search Panel -->
+        <div class="search-panel" id="searchPanel">
+            <div class="search-input-group">
+                <input type="text" class="search-input" id="searchInput" placeholder="Tìm kiếm...">
+                <button class="toolbar-btn" id="searchExecute">
+                    <i class="bi bi-search"></i>
+                </button>
+                <button class="toolbar-btn" id="closeSearch">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+            <div class="search-results" id="searchResults">
+                <p class="text-muted text-center">Nhập từ khóa để tìm kiếm</p>
+            </div>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-content">
+                <div class="loading-spinner"></div>
+                <div id="loadingText">Đang tải tài liệu...</div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Hiển thị PDF và HTML (Excel) -->
-@if (Model.IsPagedMode())
-{
-    if (Model.HasPages())
-    {
-        var currentPageDoc = Model.GetCurrentPageDocument();
+@section Scripts {
+ <!-- Libraries -->
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+ <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+ <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-        if (currentPageDoc != null)
-        {
-            var iframeSrc = Url.Content(Model.GetIFrameSource());
+ <script>
+ // Configuration
+ const CONFIG = {
+ fileUrl: '@filePath',
+ fileExt: '@fileExt',
+ documentId: @Model.GetDocumentId(),
+ itemsPerPage:50, // For text splitting (lines or elements per page)
+ maxBookmarks:100,
+ paginationMode: 'items', // 'items' or 'chars'
+ charsPerPage:2000
+ };
 
-            // If the generated page is HTML (from Excel), show it directly. Otherwise (PDF) show inside an iframe as well.
-            if (Model.IsHtmlContent())
-            {
-                <iframe id="docFrame" src="@iframeSrc" width="80%" height="1000px" style="border:1px solid #ccc"></iframe>
-            }
-            else
-            {
-                <iframe id="docFrame" src="@iframeSrc" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
-            }
+ // Global State
+ const STATE = {
+ currentPage:1,
+ totalPages:0,
+ scale:1.5,
+ content: [],
+ bookmarks: [],
+ searchResults: [],
+ currentSearchIndex: -1,
+ isHighlightMode: false,
+ isEditMode: false,
+ pdfDoc: null,
+ // raw storage for re-paginating
+ rawText: null,
+ rawDocxHtml: null,
+ rawExcelWorkbook: null
+ };
 
-            <!-- Hiển thị thông tin trang hiện tại / tổng trang -->
-            @if (Model.TotalPages > 0)
-            {
-                <div class="mt-2">@Model.GetPageInfo()</div>
-            }
+ // Initialize PDF.js
+ if (typeof pdfjsLib !== 'undefined') {
+ pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+ }
 
-            @if (Model.CurrentPageHasBookmark())
-            {
-                <button type="button" class="btn btn-warning" onclick="window.NotificationHub.showLocal('⚠️ Bookmark đã tồn tại trên trang này', 'warning');">Đã có Bookmark</button>
-            }
-            else
-            {
-                <form id="bookmarkForm" asp-controller="Bookmarks" asp-action="Create" method="post" style="display:inline">
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="documentPageId" value="@currentPageDoc.Id" />
-                    <button type="submit" class="btn btn-primary" id="addBookmarkBtn">
-                        <span class="spinner-border spinner-border-sm d-none" id="bookmarkSpinner"></span>
-                        Thêm Bookmark
-                    </button>
-                </form>
-            }
+ // Main Initialization
+ (async function init() {
+ setupEventListeners();
+ // set initial pagination UI
+ document.getElementById('paginationMode').value = CONFIG.paginationMode;
+ document.getElementById('charsPerPage').value = CONFIG.charsPerPage;
 
-        }
-        else
-        {
-            <p class="text-danger">Trang không tồn tại.</p>
-        }
-    }
-    else
-    {
-        <p class="text-danger">Tài liệu chưa được phân trang.</p>
-    }
+ await loadDocument();
+ loadBookmarks();
+ })();
+
+ // Document Loading
+ async function loadDocument() {
+ showLoading('Đang tải tài liệu...');
+
+ try {
+ switch (CONFIG.fileExt) {
+ case 'pdf':
+ await loadPDF();
+ break;
+ case 'txt':
+ await loadText();
+ break;
+ case 'doc':
+ case 'docx':
+ await loadDocx();
+ break;
+ case 'xls':
+ case 'xlsx':
+ await loadExcel();
+ break;
+ default:
+ throw new Error('Unsupported file format');
+ }
+
+ hideLoading();
+ showToast('✅ Tải tài liệu thành công', 'success');
+ } catch (error) {
+ console.error('Error loading document:', error);
+ hideLoading();
+ showToast('❌ Không thể tải tài liệu', 'error');
+ }
+ }
+
+ // PDF Viewer
+ async function loadPDF() {
+ const pdfDoc = await pdfjsLib.getDocument(CONFIG.fileUrl).promise;
+ STATE.pdfDoc = pdfDoc;
+ STATE.totalPages = pdfDoc.numPages;
+
+ document.getElementById('pageCount').textContent = STATE.totalPages;
+ document.getElementById('pdfCanvas').style.display = 'block';
+ document.getElementById('textLayer').style.display = 'block';
+ document.getElementById('highlightLayer').style.display = 'block';
+
+ await renderPDFPage(1);
+ await generateThumbnails();
+ }
+
+ async function renderPDFPage(pageNum) {
+ const canvas = document.getElementById('pdfCanvas');
+ const ctx = canvas.getContext('2d');
+ const textLayer = document.getElementById('textLayer');
+ const highlightLayer = document.getElementById('highlightLayer');
+
+ const page = await STATE.pdfDoc.getPage(pageNum);
+ const viewport = page.getViewport({ scale: STATE.scale });
+
+ canvas.height = viewport.height;
+ canvas.width = viewport.width;
+
+ await page.render({
+ canvasContext: ctx,
+ viewport: viewport
+ }).promise;
+
+ // Render text layer
+ textLayer.innerHTML = '';
+ textLayer.style.width = canvas.width + 'px';
+ textLayer.style.height = canvas.height + 'px';
+
+ const textContent = await page.getTextContent();
+ pdfjsLib.renderTextLayer({
+ textContent: textContent,
+ container: textLayer,
+ viewport: viewport,
+ textDivs: []
+ });
+
+ // Position highlight layer
+ highlightLayer.style.width = canvas.width + 'px';
+ highlightLayer.style.height = canvas.height + 'px';
+
+ renderHighlights();
+ updatePageInfo();
+ // re-apply search highlight if current search is on this page
+ setTimeout(() => {
+ const query = document.getElementById('searchInput').value.trim();
+ if (query && STATE.currentSearchIndex >=0 && STATE.searchResults[STATE.currentSearchIndex] && STATE.searchResults[STATE.currentSearchIndex].page === STATE.currentPage) {
+ highlightSearchInViewer(query);
+ }
+ },150);
+ }
+
+ // Text Viewer
+ async function loadText() {
+ showLoading('Đang tải văn bản...');
+ const response = await fetch(CONFIG.fileUrl);
+ const text = await response.text();
+
+ // store raw text for re-pagination
+ STATE.rawText = text;
+
+ applyPaginationFromState();
+
+ document.getElementById('genericViewer').style.display = 'block';
+ document.getElementById('pageCount').textContent = STATE.totalPages;
+
+ renderTextPage(1);
+ generateTextThumbnails();
+ }
+
+ function renderTextPage(pageNum) {
+ const viewer = document.getElementById('genericViewer');
+ const pageContent = STATE.content[pageNum -1] || '';
+
+ if (typeof pageContent === 'string') {
+ viewer.innerHTML = `
+ <div class="editable-content" id="editableContent">
+ <pre>${escapeHtml(pageContent)}</pre>
+ </div>
+ `;
+ } else if (Array.isArray(pageContent)) {
+ viewer.innerHTML = `
+ <div class="editable-content" id="editableContent">
+ <pre>${escapeHtml(pageContent.join('\n'))}</pre>
+ </div>
+ `;
+ } else {
+ viewer.innerHTML = '<div class="editable-content" id="editableContent"></div>';
+ }
+
+ updatePageInfo();
+ // re-apply search highlight
+ const query = document.getElementById('searchInput').value.trim();
+ if (query && STATE.currentSearchIndex >=0 && STATE.searchResults[STATE.currentSearchIndex] && STATE.searchResults[STATE.currentSearchIndex].page === STATE.currentPage) {
+ highlightSearchInViewer(query);
+ }
+ }
+
+ // DOCX Viewer
+ async function loadDocx() {
+ showLoading('Đang tải DOCX...');
+ const response = await fetch(CONFIG.fileUrl);
+ const arrayBuffer = await response.arrayBuffer();
+
+ const result = await mammoth.convertToHtml({ arrayBuffer });
+ const html = result.value;
+
+ // store raw HTML
+ STATE.rawDocxHtml = html;
+
+ applyPaginationFromState();
+
+ document.getElementById('genericViewer').style.display = 'block';
+ document.getElementById('pageCount').textContent = STATE.totalPages;
+
+ renderDocxPage(1);
+ generateGenericThumbnails();
+ }
+
+ function renderDocxPage(pageNum) {
+ const viewer = document.getElementById('genericViewer');
+ const pageContent = STATE.content[pageNum -1] || '';
+
+ if (typeof pageContent === 'string') {
+ // plain text chunk
+ viewer.innerHTML = `
+ <div class="editable-content" id="editableContent">
+ <pre>${escapeHtml(pageContent)}</pre>
+ </div>
+ `;
+ } else if (Array.isArray(pageContent)) {
+ // array of HTML fragments
+ viewer.innerHTML = `
+ <div class="editable-content" id="editableContent">
+ ${pageContent.join('')}
+ </div>
+ `;
+ } else {
+ viewer.innerHTML = '<div class="editable-content" id="editableContent"></div>';
+ }
+
+ updatePageInfo();
+ // re-apply search highlight
+ const query = document.getElementById('searchInput').value.trim();
+ if (query && STATE.currentSearchIndex >=0 && STATE.searchResults[STATE.currentSearchIndex] && STATE.searchResults[STATE.currentSearchIndex].page === STATE.currentPage) {
+ highlightSearchInViewer(query);
+ }
+ }
+
+ // Excel Viewer
+ async function loadExcel() {
+ showLoading('Đang tải Excel...');
+ const response = await fetch(CONFIG.fileUrl);
+ const arrayBuffer = await response.arrayBuffer();
+
+ const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+ // Each sheet is a "page"
+ STATE.content = workbook.SheetNames.map(name => ({
+ name: name,
+ html: XLSX.utils.sheet_to_html(workbook.Sheets[name])
+ }));
+ STATE.totalPages = STATE.content.length;
+
+ document.getElementById('genericViewer').style.display = 'block';
+ document.getElementById('pageCount').textContent = STATE.totalPages;
+
+ renderExcelPage(1);
+ generateExcelThumbnails();
+ }
+
+ function renderExcelPage(pageNum) {
+ const viewer = document.getElementById('genericViewer');
+ const sheet = STATE.content[pageNum -1];
+
+ viewer.innerHTML = `
+ <h4 style="margin-bottom:20px; color: var(--primary-color);">
+ <i class="bi bi-file-spreadsheet"></i> ${escapeHtml(sheet.name)}
+ </h4>
+ <div class="editable-content" id="editableContent">
+ ${sheet.html}
+ </div>
+ `;
+
+ updatePageInfo();
+ // re-apply search highlight
+ const query = document.getElementById('searchInput').value.trim();
+ if (query && STATE.currentSearchIndex >=0 && STATE.searchResults[STATE.currentSearchIndex] && STATE.searchResults[STATE.currentSearchIndex].page === STATE.currentPage) {
+ highlightSearchInViewer(query);
+ }
+ }
+
+ // Pagination
+ function changePage(newPage) {
+ if (newPage <1 || newPage > STATE.totalPages) return;
+
+ STATE.currentPage = newPage;
+ document.getElementById('pageNum').value = newPage;
+
+ switch (CONFIG.fileExt) {
+ case 'pdf':
+ renderPDFPage(newPage);
+ break;
+ case 'txt':
+ renderTextPage(newPage);
+ break;
+ case 'doc':
+ case 'docx':
+ renderDocxPage(newPage);
+ break;
+ case 'xls':
+ case 'xlsx':
+ renderExcelPage(newPage);
+ break;
+ }
+ }
+
+ // Re-apply pagination from stored raw content
+ function applyPaginationFromState() {
+ if (CONFIG.fileExt === 'txt') {
+ if (!STATE.rawText) {
+ STATE.content = [];
+ STATE.totalPages =0;
+ return;
+ }
+
+ if (CONFIG.paginationMode === 'chars') {
+ STATE.content = splitTextByChars(STATE.rawText, CONFIG.charsPerPage);
+ } else {
+ const lines = STATE.rawText.split('\n');
+ STATE.content = splitIntoPages(lines, CONFIG.itemsPerPage);
+ }
+
+ STATE.totalPages = STATE.content.length;
+ } else if (CONFIG.fileExt === 'doc' || CONFIG.fileExt === 'docx') {
+ if (!STATE.rawDocxHtml) {
+ STATE.content = [];
+ STATE.totalPages =0;
+ return;
+ }
+
+ if (CONFIG.paginationMode === 'chars') {
+ // use plain text split for docx when chars mode
+ const temp = document.createElement('div');
+ temp.innerHTML = STATE.rawDocxHtml;
+ const text = temp.textContent || temp.innerText || '';
+ STATE.content = splitTextByChars(text, CONFIG.charsPerPage);
+ } else {
+ const temp = document.createElement('div');
+ temp.innerHTML = STATE.rawDocxHtml;
+ const elements = Array.from(temp.children);
+ STATE.content = splitIntoPages(elements.map(el => el.outerHTML),20);
+ }
+
+ STATE.totalPages = STATE.content.length;
+ }
+
+ // Update UI page count
+ document.getElementById('pageCount').textContent = STATE.totalPages;
+ // ensure current page within range
+ if (STATE.currentPage > STATE.totalPages) STATE.currentPage = Math.max(1, STATE.totalPages);
+ document.getElementById('pageNum').value = STATE.currentPage;
+ }
+
+ // Thumbnails
+ async function generateThumbnails() {
+ const container = document.getElementById('pagesContainer');
+ container.innerHTML = '';
+
+ for (let i =1; i <= Math.min(STATE.totalPages,20); i++) {
+ const page = await STATE.pdfDoc.getPage(i);
+ const viewport = page.getViewport({ scale:0.3 });
+
+ const canvas = document.createElement('canvas');
+ const ctx = canvas.getContext('2d');
+ canvas.height = viewport.height;
+ canvas.width = viewport.width;
+
+ await page.render({
+ canvasContext: ctx,
+ viewport: viewport
+ }).promise;
+
+ const item = document.createElement('div');
+ item.className = 'thumbnail-item';
+ if (i === STATE.currentPage) item.classList.add('active');
+ item.onclick = () => changePage(i);
+
+ canvas.className = 'thumbnail-canvas';
+ item.appendChild(canvas);
+
+ const label = document.createElement('div');
+ label.className = 'thumbnail-label';
+ label.textContent = `Trang ${i}`;
+ item.appendChild(label);
+
+ container.appendChild(item);
+ }
+ }
+
+ function generateTextThumbnails() {
+ const container = document.getElementById('pagesContainer');
+ container.innerHTML = '';
+
+ STATE.content.forEach((pageContent, index) => {
+ const item = document.createElement('div');
+ item.className = 'bookmark-item';
+ item.onclick = () => changePage(index +1);
+
+ let preview = '';
+ if (typeof pageContent === 'string') {
+ preview = pageContent.substring(0,200);
+ } else if (Array.isArray(pageContent)) {
+ preview = pageContent.slice(0,3).join('\n');
+ }
+
+ item.innerHTML = `
+ <div class="bookmark-title">
+ <span><i class="bi bi-file-text"></i> Trang ${index +1}</span>
+ </div>
+ <div class="bookmark-text">
+ ${escapeHtml(preview)}
+ </div>
+ `;
+
+ container.appendChild(item);
+ });
+ }
+
+ function generateGenericThumbnails() {
+ const container = document.getElementById('pagesContainer');
+ container.innerHTML = '';
+
+ STATE.content.forEach((_, index) => {
+ const item = document.createElement('div');
+ item.className = 'bookmark-item';
+ item.onclick = () => changePage(index +1);
+
+ item.innerHTML = `
+ <div class="bookmark-title">
+ <span><i class="bi bi-file-earmark"></i> Trang ${index +1}</span>
+ </div>
+ `;
+
+ container.appendChild(item);
+ });
+ }
+
+ function generateExcelThumbnails() {
+ const container = document.getElementById('pagesContainer');
+ container.innerHTML = '';
+
+ STATE.content.forEach((sheet, index) => {
+ const item = document.createElement('div');
+ item.className = 'bookmark-item';
+ item.onclick = () => changePage(index +1);
+
+ item.innerHTML = `
+ <div class="bookmark-title">
+ <span><i class="bi bi-file-spreadsheet"></i> ${escapeHtml(sheet.name)}</span>
+ </div>
+ `;
+
+ container.appendChild(item);
+ });
+ }
+
+ // Bookmarks
+ function loadBookmarks() {
+ const stored = localStorage.getItem(`bookmarks_${CONFIG.documentId}`);
+ STATE.bookmarks = stored ? JSON.parse(stored) : [];
+ displayBookmarks();
+ }
+
+ function saveBookmarks() {
+ localStorage.setItem(`bookmarks_${CONFIG.documentId}`, JSON.stringify(STATE.bookmarks));
+ displayBookmarks();
+ }
+
+ function createBookmark() {
+ const selection = window.getSelection();
+ const text = selection.toString().trim();
+
+ if (!text) {
+ showToast('Vui lòng chọn văn bản để bookmark', 'warning');
+ return;
+ }
+
+ const bookmark = {
+ id: Date.now(),
+ page: STATE.currentPage,
+ text: text.substring(0,200),
+ timestamp: new Date().toISOString()
+ };
+
+ // If PDF, capture bounding rect relative to canvas to render highlight
+ if (CONFIG.fileExt === 'pdf') {
+ try {
+ const range = selection.getRangeAt(0);
+ const rect = range.getBoundingClientRect();
+ const canvasRect = document.getElementById('pdfCanvas').getBoundingClientRect();
+ // normalize to canvas coordinates
+ bookmark.rect = {
+ x: Math.max(0, rect.left - canvasRect.left),
+ y: Math.max(0, rect.top - canvasRect.top),
+ width: rect.width,
+ height: rect.height
+ };
+ } catch (e) {
+ console.warn('Could not compute rect for PDF selection', e);
+ }
+ }
+
+ STATE.bookmarks.push(bookmark);
+ saveBookmarks();
+ showToast('✅ Đã lưu bookmark', 'success');
+
+ selection.removeAllRanges();
+ }
+
+ function deleteBookmark(id) {
+ if (!confirm('Xóa bookmark này?')) return;
+
+ STATE.bookmarks = STATE.bookmarks.filter(b => b.id !== id);
+ saveBookmarks();
+ showToast('🗑️ Đã xóa bookmark', 'info');
+
+ // Immediately update highlights in viewer
+ if (CONFIG.fileExt === 'pdf') {
+ // remove highlights layer for current page
+ renderHighlights();
+ } else {
+ // re-render current page to remove any temporary markings
+ switch (CONFIG.fileExt) {
+ case 'txt':
+ renderTextPage(STATE.currentPage);
+ break;
+ case 'doc':
+ case 'docx':
+ renderDocxPage(STATE.currentPage);
+ break;
+ case 'xls':
+ case 'xlsx':
+ renderExcelPage(STATE.currentPage);
+ break;
+ }
+ }
+ }
+
+ function displayBookmarks() {
+ const container = document.getElementById('bookmarksContainer');
+
+ if (STATE.bookmarks.length ===0) {
+ container.innerHTML = '<p class="text-muted text-center">Chưa có bookmark</p>';
+ return;
+ }
+
+ container.innerHTML = STATE.bookmarks.map(b => `
+ <div class="bookmark-item" onclick="changePage(${b.page})">
+ <div class="bookmark-title">
+ <span>Bookmark ${STATE.bookmarks.indexOf(b) +1}</span>
+ <span class="bookmark-delete" onclick="event.stopPropagation(); deleteBookmark(${b.id})">
+ <i class="bi bi-trash"></i>
+ </span>
+ </div>
+ <div class="bookmark-text">${escapeHtml(b.text)}</div>
+ <div class="bookmark-meta">
+ <i class="bi bi-file-earmark"></i> Trang ${b.page} •
+ ${new Date(b.timestamp).toLocaleDateString('vi-VN')}
+ </div>
+ </div>
+ `).join('');
+ }
+
+ // Search
+ async function performSearch() {
+ const query = document.getElementById('searchInput').value.trim().toLowerCase();
+ const resultsDiv = document.getElementById('searchResults');
+
+ if (!query) {
+ resultsDiv.innerHTML = '<p class="text-muted text-center">Nhập từ khóa để tìm kiếm</p>';
+ return;
+ }
+
+ resultsDiv.innerHTML = '<p class="text-muted text-center">Đang tìm kiếm...</p>';
+ STATE.searchResults = [];
+
+ if (CONFIG.fileExt === 'pdf') {
+ for (let i =1; i <= STATE.totalPages; i++) {
+ const page = await STATE.pdfDoc.getPage(i);
+ const textContent = await page.getTextContent();
+ const text = textContent.items.map(item => item.str).join(' ');
+
+ if (text.toLowerCase().includes(query)) {
+ const index = text.toLowerCase().indexOf(query);
+ const context = text.substring(Math.max(0, index -50), Math.min(text.length, index +100));
+ STATE.searchResults.push({ page: i, context });
+ }
+ }
+ } else {
+ STATE.content.forEach((pageContent, index) => {
+ const text = Array.isArray(pageContent) ? pageContent.join(' ') : (pageContent || '');
+ if (text.toLowerCase().includes(query)) {
+ const idx = text.toLowerCase().indexOf(query);
+ const context = text.substring(Math.max(0, idx -50), Math.min(text.length, idx +100));
+ STATE.searchResults.push({ page: index +1, context });
+ }
+ });
+ }
+
+ if (STATE.searchResults.length ===0) {
+ resultsDiv.innerHTML = '<p class="text-muted text-center">Không tìm thấy kết quả</p>';
+ } else {
+ resultsDiv.innerHTML = STATE.searchResults.map((result, index) => `
+ <div class="search-result-item" onclick="gotoSearchResult(${index})">
+ <strong>Trang ${result.page}</strong>
+ <div class="search-result-context">...${escapeHtml(result.context)}...</div>
+ </div>
+ `).join('');
+ // automatically go to first result and highlight
+ gotoSearchResult(0);
+ }
+ }
+
+ function gotoSearchResult(index) {
+ changePage(STATE.searchResults[index].page);
+ STATE.currentSearchIndex = index;
+
+ document.querySelectorAll('.search-result-item').forEach((item, i) => {
+ item.classList.toggle('active', i === index);
+ });
+
+ // Wait briefly for page rendering then apply highlight
+ setTimeout(() => {
+ const query = document.getElementById('searchInput').value.trim();
+ if (query) highlightSearchInViewer(query);
+ },200);
+ }
+
+ // Zoom
+ function zoom(delta) {
+ STATE.scale = Math.max(0.5, Math.min(3, STATE.scale + delta));
+ document.getElementById('zoomLevel').textContent = Math.round(STATE.scale *100) + '%';
+
+ if (CONFIG.fileExt === 'pdf') {
+ renderPDFPage(STATE.currentPage);
+ } else {
+ const viewer = document.getElementById('genericViewer');
+ viewer.style.transform = `scale(${STATE.scale})`;
+ viewer.style.transformOrigin = 'center top';
+ }
+ }
+
+ // Edit Mode
+ function toggleEditMode() {
+ STATE.isEditMode = !STATE.isEditMode;
+ document.getElementById('editBtn').classList.toggle('active', STATE.isEditMode);
+
+ const content = document.getElementById('editableContent');
+ if (content) {
+ content.contentEditable = STATE.isEditMode;
+ if (STATE.isEditMode) {
+ showToast('📝 Chế độ chỉnh sửa đã bật', 'info');
+ } else {
+ showToast('✅ Đã tắt chế độ chỉnh sửa', 'success');
+ saveEdits();
+ }
+ }
+ }
+
+ function saveEdits() {
+ const content = document.getElementById('editableContent');
+ if (content) {
+ // Save to state
+ if (CONFIG.fileExt === 'txt') {
+ if (typeof STATE.content[STATE.currentPage -1] === 'string') {
+ STATE.content[STATE.currentPage -1] = content.innerText;
+ } else {
+ STATE.content[STATE.currentPage -1] = content.innerText.split('\n');
+ }
+ } else {
+ STATE.content[STATE.currentPage -1] = content.innerHTML;
+ }
+
+ showToast('💾 Đã lưu thay đổi', 'success');
+ }
+ }
+
+ // Highlights
+ function renderHighlights() {
+ if (CONFIG.fileExt !== 'pdf') return;
+
+ const layer = document.getElementById('highlightLayer');
+ layer.innerHTML = '';
+
+ STATE.bookmarks
+ .filter(b => b.page === STATE.currentPage && b.rect)
+ .forEach(bookmark => {
+ const div = document.createElement('div');
+ div.className = 'highlight';
+ div.style.left = bookmark.rect.x + 'px';
+ div.style.top = bookmark.rect.y + 'px';
+ div.style.width = bookmark.rect.width + 'px';
+ div.style.height = bookmark.rect.height + 'px';
+ div.title = bookmark.text;
+ div.onclick = () => deleteBookmark(bookmark.id);
+ layer.appendChild(div);
+ });
+ }
+
+ // Clear previous search highlights
+ function clearSearchHighlights() {
+ // remove <mark> in textLayer
+ const textLayer = document.getElementById('textLayer');
+ if (textLayer) {
+ const marks = textLayer.querySelectorAll('mark');
+ marks.forEach(m => {
+ const parent = m.parentNode;
+ if (!parent) return;
+ parent.replaceChild(document.createTextNode(m.textContent), m);
+ });
+ }
+
+ // remove <mark> in generic viewer
+ const generic = document.getElementById('genericViewer');
+ if (generic) {
+ const marksG = generic.querySelectorAll('mark');
+ marksG.forEach(m => {
+ const parent = m.parentNode;
+ if (!parent) return;
+ parent.replaceChild(document.createTextNode(m.textContent), m);
+ });
+ }
+ }
+
+ // Highlight occurrences in viewer by wrapping matches in <mark>
+ function highlightSearchInViewer(query) {
+ if (!query) return;
+ const q = query.toLowerCase();
+ clearSearchHighlights();
+
+ if (CONFIG.fileExt === 'pdf') {
+ const textLayer = document.getElementById('textLayer');
+ if (!textLayer) return;
+ const spans = Array.from(textLayer.querySelectorAll('span'));
+ spans.forEach(span => {
+ const text = span.textContent || '';
+ const lower = text.toLowerCase();
+ if (lower.includes(q)) {
+ // safe replacement: build innerHTML by replacing matched substrings
+ // escape HTML is not necessary since spans contain plain text
+ const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+ span.innerHTML = text.replace(regex, match => `<mark>${match}</mark>`);
+ }
+ });
+ } else {
+ // Walk text nodes inside generic viewer and wrap matches
+ const viewer = document.getElementById('genericViewer');
+ if (!viewer) return;
+ const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+
+ function walk(node) {
+ if (node.nodeType === Node.TEXT_NODE) {
+ const text = node.nodeValue;
+ if (!text) return;
+ if (text.toLowerCase().includes(q)) {
+ const frag = document.createDocumentFragment();
+ let lastIndex =0;
+ text.replace(regex, (match, offset) => {
+ // text from lastIndex to offset
+ if (offset > lastIndex) {
+ frag.appendChild(document.createTextNode(text.substring(lastIndex, offset)));
+ }
+ const mark = document.createElement('mark');
+ mark.textContent = match;
+ frag.appendChild(mark);
+ lastIndex = offset + match.length;
+ });
+ if (lastIndex < text.length) {
+ frag.appendChild(document.createTextNode(text.substring(lastIndex)));
+ }
+ node.parentNode.replaceChild(frag, node);
+ }
+ } else if (node.nodeType === Node.ELEMENT_NODE && node.childNodes && node.tagName.toLowerCase() !== 'script' && node.tagName.toLowerCase() !== 'style') {
+ // avoid replacing inside mark itself
+ if (node.tagName.toLowerCase() === 'mark') return;
+ const children = Array.from(node.childNodes);
+ children.forEach(child => walk(child));
+ }
+ }
+
+ walk(viewer);
+ }
+ }
+
+ // Event Listeners
+ function setupEventListeners() {
+ // Sidebar tabs
+ document.querySelectorAll('.sidebar-tab').forEach(tab => {
+ tab.addEventListener('click', function() {
+ const target = this.dataset.tab;
+
+ document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+ this.classList.add('active');
+
+ document.querySelectorAll('.tab-pane').forEach(pane => {
+ pane.style.display = pane.dataset.content === target ? 'block' : 'none';
+ });
+ });
+ });
+
+ // Toolbar buttons
+ document.getElementById('toggleSidebar').onclick = () => {
+ document.getElementById('sidebar').classList.toggle('collapsed');
+ };
+
+ document.getElementById('prevPage').onclick = () => changePage(STATE.currentPage -1);
+ document.getElementById('nextPage').onclick = () => changePage(STATE.currentPage +1);
+
+ document.getElementById('pageNum').onchange = function() {
+ changePage(parseInt(this.value));
+ };
+
+ document.getElementById('zoomIn').onclick = () => zoom(0.25);
+ document.getElementById('zoomOut').onclick = () => zoom(-0.25);
+ document.getElementById('fitWidth').onclick = () => {
+ STATE.scale =1.5;
+ zoom(0);
+ };
+
+ document.getElementById('searchBtn').onclick = () => {
+ document.getElementById('searchPanel').classList.toggle('active');
+ document.getElementById('searchInput').focus();
+ };
+
+ document.getElementById('closeSearch').onclick = () => {
+ document.getElementById('searchPanel').classList.remove('active');
+ };
+
+ document.getElementById('searchExecute').onclick = performSearch;
+ document.getElementById('searchInput').onkeypress = (e) => {
+ if (e.key === 'Enter') performSearch();
+ };
+
+ document.getElementById('highlightBtn').onclick = () => {
+ STATE.isHighlightMode = !STATE.isHighlightMode;
+ document.getElementById('highlightBtn').classList.toggle('active', STATE.isHighlightMode);
+
+ // enable text selection on generic viewer and PDF text layer when highlight mode is active
+ const genericViewer = document.getElementById('genericViewer');
+ const textLayer = document.getElementById('textLayer');
+ if (genericViewer) genericViewer.style.userSelect = STATE.isHighlightMode ? 'text' : 'none';
+ if (textLayer) {
+ textLayer.classList.toggle('selectable', STATE.isHighlightMode);
+ // also allow user-select via style for safety
+ textLayer.style.userSelect = STATE.isHighlightMode ? 'text' : 'none';
+ }
+
+ if (STATE.isHighlightMode) {
+ showToast('🖍️ Chế độ đánh dấu đã bật', 'info');
+ } else {
+ showToast('✅ Đã tắt chế độ đánh dấu', 'success');
+ }
+ };
+
+ document.getElementById('editBtn').onclick = toggleEditMode;
+
+ document.getElementById('downloadBtn').onclick = () => {
+ window.open(CONFIG.fileUrl, '_blank');
+ };
+
+ document.getElementById('printBtn').onclick = () => {
+ window.print();
+ };
+
+ // Pagination mode controls
+ document.getElementById('paginationMode').onchange = function() {
+ CONFIG.paginationMode = this.value;
+ applyPaginationFromState();
+ renderCurrentAfterRepaginate();
+ };
+
+ document.getElementById('charsPerPage').onchange = function() {
+ const v = parseInt(this.value);
+ if (!isNaN(v) && v >=100) {
+ CONFIG.charsPerPage = v;
+ if (CONFIG.paginationMode === 'chars') {
+ applyPaginationFromState();
+ renderCurrentAfterRepaginate();
+ }
+ }
+ };
+
+ // Text selection for bookmark
+ document.getElementById('contentArea').addEventListener('mouseup', function() {
+ if (STATE.isHighlightMode) {
+ createBookmark();
+ }
+ });
+
+ // Also listen for mouseup on PDF text layer to capture selection there
+ const pdfTextLayer = document.getElementById('textLayer');
+ if (pdfTextLayer) {
+ pdfTextLayer.addEventListener('mouseup', function (e) {
+ // only create bookmark when highlight mode is active
+ if (!STATE.isHighlightMode) return;
+ // give browser a tick to populate selection
+ setTimeout(() => {
+ createBookmark();
+ },10);
+ });
+ }
+
+ // Keyboard shortcuts
+ document.addEventListener('keydown', (e) => {
+ if (e.ctrlKey || e.metaKey) {
+ if (e.key === 'f') {
+ e.preventDefault();
+ document.getElementById('searchBtn').click();
+ } else if (e.key === 's') {
+ e.preventDefault();
+ if (STATE.isEditMode) saveEdits();
+ }
+ } else if (e.key === 'ArrowLeft') {
+ changePage(STATE.currentPage -1);
+ } else if (e.key === 'ArrowRight') {
+ changePage(STATE.currentPage +1);
+ }
+ });
+ }
+
+ function renderCurrentAfterRepaginate() {
+ // re-render current page or go to page1 if out of range
+ if (STATE.totalPages ===0) {
+ document.getElementById('genericViewer').innerHTML = '<p class="text-muted text-center">Không có nội dung</p>';
+ return;
+ }
+ if (STATE.currentPage > STATE.totalPages) STATE.currentPage =1;
+ changePage(STATE.currentPage);
+ // regenerate thumbnails for non-pdf
+ if (CONFIG.fileExt === 'txt') generateTextThumbnails();
+ if (CONFIG.fileExt === 'doc' || CONFIG.fileExt === 'docx') generateGenericThumbnails();
+ }
+
+ // Utility Functions
+ function splitIntoPages(items, itemsPerPage) {
+ const pages = [];
+ for (let i =0; i < items.length; i += itemsPerPage) {
+ pages.push(items.slice(i, i + itemsPerPage));
+ }
+ return pages;
+ }
+
+ function splitTextByChars(text, charsPerPage) {
+ const pages = [];
+ if (!text) return pages;
+ let i =0;
+ while (i < text.length) {
+ // try to avoid breaking words: look ahead to last space within range
+ let end = i + charsPerPage;
+ if (end >= text.length) {
+ pages.push(text.substring(i));
+ break;
+ }
+ let slice = text.substring(i, end);
+ // if next char is not space, try to move to last space in slice
+ const nextChar = text.charAt(end);
+ if (nextChar && nextChar !== ' ' && nextChar !== '\n') {
+ const lastSpace = slice.lastIndexOf(' ');
+ if (lastSpace > Math.floor(charsPerPage *0.4)) {
+ end = i + lastSpace;
+ slice = text.substring(i, end);
+ }
+ }
+
+ pages.push(slice);
+ i = end;
+ // skip potential space/newline at start of next slice
+ while (i < text.length && (text.charAt(i) === ' ' || text.charAt(i) === '\n')) i++;
+ }
+ return pages;
+ }
+
+ function updatePageInfo() {
+ // Update thumbnail active state
+ document.querySelectorAll('.thumbnail-item').forEach((item, index) => {
+ item.classList.toggle('active', index +1 === STATE.currentPage);
+ });
+
+ // Update nav buttons
+ document.getElementById('prevPage').disabled = STATE.currentPage <=1;
+ document.getElementById('nextPage').disabled = STATE.currentPage >= STATE.totalPages;
+ }
+
+ function showLoading(text = 'Đang tải...') {
+ document.getElementById('loadingText').textContent = text;
+ document.getElementById('loadingOverlay').style.display = 'flex';
+ }
+
+ function hideLoading() {
+ document.getElementById('loadingOverlay').style.display = 'none';
+ }
+
+ function showToast(message, type = 'info') {
+ const toast = document.createElement('div');
+ toast.className = 'toast-notification';
+
+ const colors = {
+ success: '#198754',
+ error: '#dc3545',
+ warning: '#ffc107',
+ info: '#0d6efd'
+ };
+
+ toast.style.borderLeft = `4px solid ${colors[type] || colors.info}`;
+ toast.innerHTML = `
+ <div style="display: flex; align-items: center; justify-content: space-between;">
+ <span>${message}</span>
+ <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; font-size:20px; cursor: pointer; padding:00015px;">×</button>
+ </div>
+ `;
+
+ document.body.appendChild(toast);
+
+ setTimeout(() => {
+ toast.style.animation = 'slideInUp0.3s ease-out reverse';
+ setTimeout(() => toast.remove(),300);
+ },3000);
+ }
+
+ function escapeHtml(text) {
+ const div = document.createElement('div');
+ div.textContent = text;
+ return div.innerHTML;
+ }
+
+ // Save before unload
+ window.addEventListener('beforeunload', (e) => {
+ if (STATE.isEditMode) {
+ e.preventDefault();
+ e.returnValue = 'Bạn có thay đổi chưa lưu. Bạn có chắc muốn thoát?';
+ }
+ });
+ </script>
 }
-else
-{
-    if (Model.HasFile())
-    {
-        <iframe id="docFrame" src="@Url.Content(Model.GetFilePath())" width="60%" height="1200px" style="border:1px solid #ccc"></iframe>
-    }
-    else
-    {
-        <p class="text-danger">Không tìm thấy file gốc.</p>
-    }
-}
-
-<script src="/lib/microsoft/signalr/dist/browser/signalr.js"></script>
-<script src="/js/document-notify.js"></script>
-<script>
-    (function () {
-        var docId = @Model.GetDocumentId();
-        var currentPageId = @Model.GetCurrentPageId();
-        var currentPageNumber = @Model.Page;
-        var mode = '@Model.Mode';
-
-        function onPageChanged(payload, action) {
-            try {
-                console.log('Page change detected:', action, payload);
-
-                if (action === 'updated') {
-                    // If the changed page is the same as currently displayed, reload the iframe
-                    if (payload && payload.PageId && payload.PageId === currentPageId) {
-                        var frame = document.getElementById('docFrame');
-                        if (frame) {
-                            // Add timestamp to force reload
-                            var src = frame.src.split('?')[0];
-                            frame.src = src + '?t=' + new Date().getTime();
-                            console.info('Page updated externally, reloaded iframe.');
-                        }
-                    } else if (payload && payload.PageNumber && payload.PageNumber === currentPageNumber) {
-                        // Reload the entire page to reflect changes
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    }
-                } else if (action === 'added') {
-                    // A new page was added, optionally reload to show updated page count
-                    console.info('New page added to document');
-                    // Could show a notification to refresh
-                    if (confirm('Có trang mới được thêm vào. Tải lại trang để xem?')) {
-                        location.reload();
-                    }
-                } else if (action === 'deleted') {
-                    // A page was deleted
-                    if (payload && payload.PageId && payload.PageId === currentPageId) {
-                        // Current page was deleted, redirect to first page or document list
-                        alert('Trang hiện tại đã bị xóa. Chuyển về trang đầu.');
-                        window.location.href = '/documents/view/@Model.GetDocumentId()?mode=paged&page=1';
-                    } else if (payload && payload.PageNumber && payload.PageNumber === currentPageNumber) {
-                        setTimeout(function() {
-                            location.reload();
-                        }, 1000);
-                    }
-                }
-            } catch (e) {
-                console.error('Error handling page change:', e);
-            }
-        }
-
-        // Start SignalR notification system
-        startDocumentNotify(docId, onPageChanged);
-
-        // Leave group when navigating away
-        window.addEventListener('beforeunload', function () {
-            stopDocumentNotify(docId);
-        });
-
-        // Auto-reload iframe periodically as a fallback (optional)
-        // Uncomment if you want periodic refresh
-        /*
-        setInterval(function() {
-            var frame = document.getElementById('docFrame');
-            if (frame && mode === 'paged') {
-                var src = frame.src.split('?')[0];
-                frame.src = src + '?t=' + new Date().getTime();
-            }
-        }, 30000); // Every 30 seconds
-        */
-    })();
-</script>
-
-<script>
-    // Handle bookmark form submission with AJAX
-    $(document).ready(function() {
-        $('#bookmarkForm').on('submit', function(e) {
-            e.preventDefault(); // Prevent default form submission
-            
-            const form = $(this);
-            const submitBtn = $('#addBookmarkBtn');
-            const spinner = $('#bookmarkSpinner');
-            
-            // Disable button and show spinner
-            submitBtn.prop('disabled', true);
-            spinner.removeClass('d-none');
-            
-            $.ajax({
-                url: form.attr('action'),
-                type: 'POST',
-                data: form.serialize(),
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        // Show success notification with custom styling
-                        window.NotificationHub.showLocal('✅ ' + response.message, 'success');
-                        
-                        // Add success animation to button
-                        submitBtn.addClass('bookmark-success');
-                        
-                        // Change button to indicate bookmark exists
-                        setTimeout(function() {
-                            submitBtn.removeClass('btn-primary bookmark-success').addClass('btn-warning');
-                            submitBtn.html('✓ Đã có Bookmark');
-                            submitBtn.prop('disabled', true);
-                        }, 500);
-                        
-                        // Optional: Reload page after a delay to show bookmark state
-                        setTimeout(function() {
-                            location.reload();
-                        }, 2000);
-                    } else {
-                        // Show error notification with appropriate icon
-                        if (response.message && (response.message.includes('tồn tại') || response.message.includes('đã có'))) {
-                            window.NotificationHub.showLocal('⚠️ ' + response.message, 'warning');
-                            
-                            // Change button appearance for existing bookmark
-                            submitBtn.removeClass('btn-primary').addClass('btn-warning');
-                            submitBtn.html('✓ Đã có Bookmark');
-                            submitBtn.prop('disabled', true);
-                        } else {
-                            window.NotificationHub.showLocal('❌ ' + response.message, 'error');
-                            
-                            // Re-enable button for other errors
-                            submitBtn.prop('disabled', false);
-                            spinner.addClass('d-none');
-                        }
-                    }
-                },
-                error: function(xhr) {
-                    // Show error notification
-                    let errorMessage = 'Có lỗi xảy ra khi lưu bookmark';
-                    if (xhr.responseJSON && xhr.responseJSON.message) {
-                        errorMessage = xhr.responseJSON.message;
-                    }
-                    window.NotificationHub.showLocal('❌ ' + errorMessage, 'error');
-                    
-                    // Re-enable button
-                    submitBtn.prop('disabled', false);
-                    spinner.addClass('d-none');
-                },
-                complete: function() {
-                    spinner.addClass('d-none');
-                }
-            });
-        });
-        
-        // Show TempData messages if exists
-        @if (TempData["SuccessMessage"] != null)
-        {
-            <text>
-            window.NotificationHub.showLocal('✅ @TempData["SuccessMessage"]', 'success');
-            </text>
-        }
-        
-        @if (TempData["ErrorMessage"] != null)
-        {
-            <text>
-            window.NotificationHub.showLocal('❌ @TempData["ErrorMessage"]', 'error');
-            </text>
-        }
-    });
-</script>
-
-<p class="mt-3">
-    <a asp-action="Index" class="btn btn-secondary">← Quay lại danh sách</a>
-</p>

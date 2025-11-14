@@ -16,6 +16,11 @@ namespace BookDb.Controllers
 
         public IActionResult Index()
         {
+            if (User.Identity?.IsAuthenticated == true)
+            {
+                return RedirectToAction("Index", "Documents");
+            }
+
             var viewModel = new IndexModel();
             return View(viewModel);
         }

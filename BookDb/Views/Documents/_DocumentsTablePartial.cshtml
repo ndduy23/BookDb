@@ -1,16 +1,74 @@
+@using BookDb.Models
 @model BookDb.Views.Documents.IndexModel
 
 @foreach (var item in Model.Documents)
 {
-    <tr data-document-id="@item.Id">
-        <td>@item.Title</td>
-        <td>@item.Category</td>
+    <tr data-document-id="@item.Id" class="document-card">
+        <td><strong>@item.Title</strong></td>
+        <td><span class="badge bg-info">@item.Category</span></td>
         <td>@item.Author</td>
         <td>@Model.GetFormattedDate(item.CreatedAt)</td>
         <td>
-            <a asp-action="ViewDocument" asp-route-id="@item.Id" class="btn btn-sm btn-success">Xem</a>
-            <a asp-action="Edit" asp-route-id="@item.Id" class="btn btn-sm btn-warning">Sửa</a>
-            <button type="button" class="btn btn-sm btn-danger delete-btn" data-id="@item.Id">Xóa</button>
+            <!-- View button - available for everyone -->
+            <a asp-action="ViewDocument" asp-route-id="@(item.Id)"
+               class="btn btn-sm btn-success">
+                <i class="bi bi-eye"></i> Xem
+            </a>
+
+            @* Server-side permission check: if server-authenticated user is admin or owner, show controls immediately. Otherwise render hidden controls for client-side JS to reveal when using JWT stored client-side. *@
+            @if (User?.Identity?.IsAuthenticated == true)
+            {
+                var serverUserId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var serverIsOwner = !string.IsNullOrEmpty(serverUserId) && !string.IsNullOrEmpty(item.OwnerId) && string.Equals(item.OwnerId, serverUserId, StringComparison.OrdinalIgnoreCase);
+                var serverIsAdmin = User.IsInRole(Roles.Admin);
+                var serverCanManage = serverIsAdmin || serverIsOwner;
+
+                if (serverCanManage)
+                {
+                    <!-- Visible controls for server-side authorized user -->
+                    <a asp-action="Edit" asp-route-id="@(item.Id)" class="btn btn-sm btn-warning ms-1" data-owner-id="@item.OwnerId">
+                        <i class="bi bi-pencil"></i> Sửa
+                    </a>
+
+                    <form method="post" asp-action="Delete" asp-route-id="@(item.Id)" class="d-inline-block ms-1" data-owner-id="@item.OwnerId">
+                        @Html.AntiForgeryToken()
+                        <!-- Visible submit button used for non-JS fallback; JS will intercept to perform AJAX -->
+                        <button type="submit" class="btn btn-sm btn-danger delete-btn" data-id="@(item.Id)" data-title="@(item.Title)" data-owner-id="@item.OwnerId">
+                            <i class="bi bi-trash"></i> Xóa
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <!-- Render hidden controls for client-side JWT users -->
+                    <a asp-action="Edit" asp-route-id="@(item.Id)" class="btn btn-sm btn-warning ms-1 admin-only owner-only d-none" data-owner-id="@item.OwnerId">
+                        <i class="bi bi-pencil"></i> Sửa
+                    </a>
+
+                    <form method="post" asp-action="Delete" asp-route-id="@(item.Id)" class="d-inline-block ms-1 admin-only owner-only d-none" data-owner-id="@item.OwnerId">
+                        @Html.AntiForgeryToken()
+                        <!-- Visible submit button used for non-JS fallback; JS will intercept to perform AJAX -->
+                        <button type="submit" class="btn btn-sm btn-danger delete-btn" data-id="@(item.Id)" data-title="@(item.Title)" data-owner-id="@item.OwnerId">
+                            <i class="bi bi-trash"></i> Xóa
+                        </button>
+                    </form>
+                }
+            }
+            else
+            {
+                <!-- Not authenticated server-side: render hidden controls for client-side JWT reveal -->
+                <a asp-action="Edit" asp-route-id="@(item.Id)" class="btn btn-sm btn-warning ms-1 admin-only owner-only d-none" data-owner-id="@item.OwnerId">
+                    <i class="bi bi-pencil"></i> Sửa
+                </a>
+
+                <form method="post" asp-action="Delete" asp-route-id="@(item.Id)" class="d-inline-block ms-1 admin-only owner-only d-none" data-owner-id="@item.OwnerId">
+                    @Html.AntiForgeryToken()
+                    <!-- Visible submit button used for non-JS fallback; JS will intercept to perform AJAX -->
+                    <button type="submit" class="btn btn-sm btn-danger delete-btn" data-id="@(item.Id)" data-title="@(item.Title)" data-owner-id="@item.OwnerId">
+                        <i class="bi bi-trash"></i> Xóa
+                    </button>
+                </form>
+            }
         </td>
     </tr>
 }
@@ -18,6 +76,9 @@
 @if (!Model.HasDocuments())
 {
     <tr>
-        <td colspan="5" class="text-center text-muted py-4">Không có tài liệu nào</td>
+        <td colspan="5" class="text-center text-muted py-4">
+            <i class="bi bi-inbox" style="font-size:32px;"></i>
+            <p class="mt-2">Không có tài liệu nào</p>
+        </td>
     </tr>
 }
